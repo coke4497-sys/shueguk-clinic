@@ -4,6 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>클리닉 신청 현황 · 이수경국어</title>
+
+<!-- 홈 화면 앱 아이콘 (모바일) -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#FAF8F4" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="슈국 클리닉" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -60,7 +69,7 @@
   .bar-row:last-child{margin-bottom:0;}
   .bar-row .lab{font-size:.8rem;width:42%;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .bar-wrap{flex:1;height:9px;background:#F0ECE3;border-radius:5px;overflow:hidden;}
-  .bar{height:100%;border-radius:5px;background:var(--accent);transition:width .3s;}
+  .bar{display:block;height:100%;border-radius:5px;background:var(--accent);transition:width .3s;}
   .bar-row .cnt{font-size:.8rem;font-weight:700;width:24px;text-align:right;flex:none;color:var(--ink-soft);}
   .bar-row:hover .lab{color:var(--accent-dark);}
 

@@ -236,17 +236,19 @@
     return isNaN(d) ? null : d;
   }
   function fmtDate(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+  // 한 주차를 '수~화'로 묶는다. 제출일이 속한 주의 수요일을 반환.
   function weekStartKey(ts){
     const d = toDate(ts); if(!d) return "";
-    const day = d.getDay();                 // 0=일 .. 6=토
-    const diff = (day === 0 ? -6 : 1 - day); // 월요일까지
-    return fmtDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()+diff));
+    const since = (d.getDay() - 3 + 7) % 7;  // 수요일(3)로부터 지난 날 수
+    return fmtDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()-since));
   }
+  // 클리닉 라벨: 신청 주(수~화)의 '다음 주' 수~일이 실제 클리닉
   function weekLabel(key){
-    const p = key.split("-"); const mon = new Date(+p[0], +p[1]-1, +p[2]);
-    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate()+6);
+    const p = key.split("-"); const wed = new Date(+p[0], +p[1]-1, +p[2]);
+    const cWed = new Date(wed.getFullYear(), wed.getMonth(), wed.getDate()+7);  // 클리닉 수요일
+    const cSun = new Date(wed.getFullYear(), wed.getMonth(), wed.getDate()+11); // 클리닉 일요일
     const md = x => (x.getMonth()+1)+"/"+x.getDate();
-    return md(mon)+" ~ "+md(sun);
+    return md(cWed)+" ~ "+md(cSun)+" 클리닉";
   }
 
   let allRows = [];

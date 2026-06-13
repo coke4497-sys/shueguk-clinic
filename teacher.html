@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>클리닉 신청 현황 · 이수경국어</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#FAF8F4; --surface:#FFFFFF; --ink:#23302B; --ink-soft:#5B675F;
+    --accent:#2F6E5A; --accent-dark:#234f41; --accent-warm:#E2A33C;
+    --line:#E7E3DB; --line-strong:#D6D0C4; --error:#C0492F;
+    --c-add:#2F6E5A; --c-q:#3E78B2; --c-read:#E2A33C; --c-concept:#8A6BB1;
+    --radius:14px; --shadow:0 1px 2px rgba(35,48,43,.04),0 8px 24px rgba(35,48,43,.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Pretendard Variable",Pretendard,-apple-system,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased; padding:0 0 64px;
+  }
+  .wrap{max-width:980px;margin:0 auto;padding:0 20px;}
+
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+    flex-wrap:wrap;padding:32px 20px 20px;max-width:980px;margin:0 auto;}
+  .title .brand{font-family:"Gowun Batang",serif;font-weight:700;font-size:1.2rem;color:var(--accent-dark);}
+  .title .brand .en{color:var(--accent-warm);font-weight:700;letter-spacing:.06em;font-size:.9em;}
+  .title h1{font-size:1rem;font-weight:600;margin:6px 0 0;}
+  .head-actions{display:flex;align-items:center;gap:12px;}
+  .updated{font-size:.78rem;color:var(--ink-soft);}
+  .refresh{border:1px solid var(--line-strong);background:#fff;color:var(--ink);
+    font:inherit;font-weight:600;font-size:.85rem;padding:9px 16px;border-radius:10px;cursor:pointer;}
+  .refresh:hover{border-color:var(--accent);color:var(--accent);}
+  .refresh:disabled{opacity:.5;cursor:default;}
+
+  .state{max-width:980px;margin:40px auto;padding:0 20px;text-align:center;color:var(--ink-soft);}
+  .state.err{color:var(--error);font-weight:600;}
+
+  #dashboard{display:none;}
+
+  /* Stat cards */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:6px;}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:18px 18px;}
+  .stat .n{font-size:1.7rem;font-weight:800;color:var(--accent-dark);letter-spacing:-.02em;line-height:1.1;}
+  .stat .l{font-size:.82rem;color:var(--ink-soft);margin-top:4px;}
+  .stat .sub{font-size:.78rem;color:var(--ink-soft);margin-top:2px;}
+
+  /* Aggregation cards */
+  .aggs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:14px;}
+  .agg{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 16px;}
+  .agg h2{font-size:.82rem;font-weight:700;color:var(--accent);margin:0 0 12px;letter-spacing:.02em;}
+  .bar-row{display:flex;align-items:center;gap:8px;margin-bottom:9px;cursor:pointer;}
+  .bar-row:last-child{margin-bottom:0;}
+  .bar-row .lab{font-size:.8rem;width:42%;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bar-wrap{flex:1;height:9px;background:#F0ECE3;border-radius:5px;overflow:hidden;}
+  .bar{height:100%;border-radius:5px;background:var(--accent);transition:width .3s;}
+  .bar-row .cnt{font-size:.8rem;font-weight:700;width:24px;text-align:right;flex:none;color:var(--ink-soft);}
+  .bar-row:hover .lab{color:var(--accent-dark);}
+
+  /* Controls */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px;}
+  .controls input[type=text],.controls select{
+    font:inherit;font-size:.9rem;color:var(--ink);background:#fff;border:1px solid var(--line-strong);
+    border-radius:9px;padding:9px 11px;-webkit-appearance:none;appearance:none;}
+  .controls input[type=text]{flex:1;min-width:140px;}
+  .controls select{padding-right:30px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235B675F' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 11px center;}
+  .controls input:focus,.controls select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,110,90,.14);}
+  .toggle{display:inline-flex;border:1px solid var(--line-strong);border-radius:9px;overflow:hidden;}
+  .toggle button{border:none;background:#fff;font:inherit;font-size:.85rem;font-weight:600;color:var(--ink-soft);
+    padding:9px 14px;cursor:pointer;}
+  .toggle button.on{background:var(--accent);color:#fff;}
+  .count-label{font-size:.82rem;color:var(--ink-soft);margin:14px 0 8px;}
+
+  /* Table */
+  .table-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden;}
+  .tbl-scroll{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:.86rem;}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-size:.76rem;font-weight:700;color:var(--ink-soft);white-space:nowrap;background:#FCFBF8;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#FCFBF8;}
+  td.who{white-space:nowrap;}
+  td.who .nm{font-weight:600;}
+  td.who .meta{font-size:.74rem;color:var(--ink-soft);}
+  td.when{white-space:nowrap;color:var(--ink-soft);font-size:.78rem;}
+  td.content{min-width:200px;white-space:pre-wrap;}
+  td.memo{color:var(--ink-soft);font-size:.8rem;min-width:120px;white-space:pre-wrap;}
+  .tag{display:inline-block;font-size:.74rem;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+  .tag.add{background:rgba(47,110,90,.12);color:var(--c-add);}
+  .tag.q{background:rgba(62,120,178,.12);color:var(--c-q);}
+  .tag.read{background:rgba(226,163,60,.16);color:#b07d18;}
+  .tag.concept{background:rgba(138,107,177,.13);color:var(--c-concept);}
+  .area-cell{white-space:nowrap;}
+
+  /* Grouped (학생별) */
+  .stu{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 18px;margin-bottom:12px;}
+  .stu-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;}
+  .stu-head .nm{font-weight:700;font-size:.98rem;}
+  .stu-head .slot{font-size:.74rem;font-weight:700;color:#b07d18;background:rgba(226,163,60,.16);padding:2px 9px;border-radius:20px;}
+  .stu-head .meta{font-size:.78rem;color:var(--ink-soft);}
+  .stu-head .n{margin-left:auto;font-size:.78rem;color:var(--ink-soft);}
+  .stu-req{display:flex;gap:10px;padding:8px 0;border-top:1px dashed var(--line);}
+  .stu-req:first-of-type{border-top:none;}
+  .stu-req .body{flex:1;}
+  .stu-req .ar{font-size:.78rem;color:var(--ink-soft);margin-top:2px;}
+  .stu-req .ct{white-space:pre-wrap;}
+  .stu-memo{margin-top:8px;font-size:.8rem;color:var(--ink-soft);border-top:1px dashed var(--line);padding-top:8px;}
+
+  .empty{padding:40px;text-align:center;color:var(--ink-soft);}
+
+  /* 비밀번호 게이트 */
+  .gate{max-width:360px;margin:80px auto;padding:0 20px;}
+  .gate-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:30px 26px;text-align:center;}
+  .gate .brand{font-family:"Gowun Batang",serif;font-weight:700;font-size:1.2rem;color:var(--accent-dark);}
+  .gate .brand .en{color:var(--accent-warm);font-weight:700;letter-spacing:.06em;font-size:.9em;}
+  .gate h1{font-size:.92rem;font-weight:600;margin:8px 0 20px;color:var(--ink-soft);}
+  .gate input{width:100%;font:inherit;font-size:1rem;border:1px solid var(--line-strong);
+    border-radius:10px;padding:11px 12px;-webkit-appearance:none;appearance:none;}
+  .gate input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,110,90,.14);}
+  .gate button{width:100%;border:none;background:var(--accent);color:#fff;font:inherit;font-weight:700;
+    font-size:.98rem;padding:13px;border-radius:11px;cursor:pointer;margin-top:12px;}
+  .gate button:hover{background:var(--accent-dark);}
+  .gate button:disabled{opacity:.6;cursor:default;}
+  .gate .ge{color:var(--error);font-size:.82rem;font-weight:600;margin-top:12px;min-height:1.1em;}
+
+  @media (max-width:720px){
+    .stats,.aggs{grid-template-columns:1fr;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none !important;}}
+</style>
+</head>
+<body>
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="brand">이수경국어 <span class="en">SHUEGUK</span></div>
+    <h1>교사용 · 클리닉 신청 현황</h1>
+    <input type="password" id="pw" placeholder="비밀번호" autocomplete="current-password" />
+    <button id="enter">확인</button>
+    <div class="ge" id="gate-err"></div>
+  </div>
+</div>
+
+<header id="topbar" style="display:none;">
+  <div class="title">
+    <div class="brand">이수경국어 <span class="en">SHUEGUK</span></div>
+    <h1>클리닉 수업 신청 현황</h1>
+  </div>
+  <div class="head-actions">
+    <span class="updated" id="updated"></span>
+    <button class="refresh" id="refresh">새로고침</button>
+  </div>
+</header>
+
+<div class="state" id="state" style="display:none;">신청 현황을 불러오는 중…</div>
+
+<main class="wrap" id="dashboard">
+  <div class="stats">
+    <div class="stat"><div class="n" id="s-students">0</div><div class="l">신청 학생 수</div></div>
+    <div class="stat"><div class="n" id="s-requests">0</div><div class="l">요청 건수</div></div>
+    <div class="stat"><div class="n" id="s-latest">–</div><div class="l">최근 신청</div><div class="sub" id="s-latest-who"></div></div>
+  </div>
+
+  <div class="aggs">
+    <div class="agg"><h2>시간대별</h2><div id="agg-time"></div></div>
+    <div class="agg"><h2>영역별</h2><div id="agg-area"></div></div>
+    <div class="agg"><h2>유형별</h2><div id="agg-type"></div></div>
+    <div class="agg"><h2>학교 · 과목별</h2><div id="agg-school"></div></div>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="q" placeholder="이름 검색" />
+    <select id="f-week"><option value="">전체 주차</option></select>
+    <select id="f-time"><option value="">전체 시간</option></select>
+    <select id="f-type"><option value="">전체 유형</option></select>
+    <select id="f-area"><option value="">전체 영역</option></select>
+    <select id="f-school"><option value="">전체 학교</option></select>
+    <span class="toggle">
+      <button id="v-req" class="on">요청별</button>
+      <button id="v-stu">학생별</button>
+    </span>
+  </div>
+
+  <div class="count-label" id="count-label"></div>
+  <div id="list"></div>
+</main>
+
+<script>
+  /* ============================================================
+     DATA_URL : Apps Script 웹앱 주소(.../exec)
+     ============================================================ */
+  const DATA_URL = "https://script.google.com/macros/s/AKfycbw8e-054e4VUfRRx-PadyuoXRb-jxsKRcdOaq04SJH1oJyFVS_VOh9GUN_pL5cHPPzKVA/exec";
+
+  const TYPE_CLASS = { "추가 문제":"add", "질문":"q", "함께 읽을 지문":"read", "개념 설명":"concept" };
+  const TYPE_BAR   = { "추가 문제":"var(--c-add)", "질문":"var(--c-q)", "함께 읽을 지문":"var(--c-read)", "개념 설명":"var(--c-concept)" };
+  const SLOT_ORDER = ["목 저녁 5:30–7:00","목 저녁 7:00–8:30","금 저녁 7:00–8:30","금 저녁 8:30–10:00","토 6:00–7:30","일 3:30–5:00"];
+  const slotIndex = s => { const i = SLOT_ORDER.indexOf(s); return i === -1 ? 99 : i; };
+
+  // 제출 시각을 월요일 시작 주 단위로 묶음
+  function parseDate(ts){
+    const s = String(ts||"").trim(); if(!s) return null;
+    const p = s.split(" ")[0].split("-");
+    if(p.length<3) return null;
+    return new Date(+p[0], +p[1]-1, +p[2]);
+  }
+  function fmtDate(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+  function weekStartKey(ts){
+    const d = parseDate(ts); if(!d) return "";
+    const day = d.getDay();                 // 0=일 .. 6=토
+    const diff = (day === 0 ? -6 : 1 - day); // 월요일까지
+    return fmtDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()+diff));
+  }
+  function weekLabel(key){
+    const p = key.split("-"); const mon = new Date(+p[0], +p[1]-1, +p[2]);
+    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate()+6);
+    const md = x => (x.getMonth()+1)+"/"+x.getDate();
+    return md(mon)+" ~ "+md(sun);
+  }
+
+  let allRows = [];
+  let view = "req"; // "req" | "stu"
+  let authed = false;
+  let teacherPw = "";
+
+  const $ = id => document.getElementById(id);
+  function setState(msg, isErr){
+    const s = $("state");
+    s.style.display = msg ? "block" : "none";
+    s.textContent = msg || "";
+    s.className = "state" + (isErr ? " err" : "");
+    $("dashboard").style.display = msg ? "none" : "block";
+  }
+  function showGate(errMsg){
+    authed = false;
+    $("gate").style.display = "block";
+    $("topbar").style.display = "none";
+    $("state").style.display = "none";
+    $("dashboard").style.display = "none";
+    $("gate-err").textContent = errMsg || "";
+    $("enter").disabled = false; $("enter").textContent = "확인";
+    $("pw").focus(); $("pw").select();
+  }
+  function enterApp(){
+    authed = true;
+    $("gate").style.display = "none";
+    $("topbar").style.display = "flex";
+  }
+
+  function fetchData(){
+    if (authed){ setState("신청 현황을 불러오는 중…", false); $("refresh").disabled = true; }
+    const cb = "shuegukCb" + Date.now();
+    const script = document.createElement("script");
+    window[cb] = function(resp){
+      window[cb] = undefined;
+      if (script.parentNode) script.parentNode.removeChild(script);
+      $("refresh").disabled = false;
+      if (!resp || resp.result !== "success"){
+        if (resp && resp.message === "unauthorized"){
+          showGate("비밀번호가 올바르지 않습니다.");
+        } else if (authed){
+          setState("데이터를 불러오지 못했어요. 웹앱 주소를 확인해 주세요.", true);
+        } else {
+          showGate("데이터를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+        }
+        return;
+      }
+      if (!authed) enterApp();
+      allRows = (resp.rows || []).filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]));
+      $("updated").textContent = "업데이트 " + new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
+      setState("", false);
+      buildFilters();
+      render();
+    };
+    script.onerror = function(){
+      if (script.parentNode) script.parentNode.removeChild(script);
+      $("refresh").disabled = false;
+      if (authed) setState("데이터를 불러오지 못했어요. 인터넷 연결과 웹앱 주소를 확인해 주세요.", true);
+      else showGate("연결에 실패했어요. 인터넷 연결을 확인해 주세요.");
+    };
+    script.src = DATA_URL + "?action=data"
+               + "&pw=" + encodeURIComponent(teacherPw)
+               + "&callback=" + cb + "&t=" + Date.now();
+    document.body.appendChild(script);
+  }
+
+  function studentKey(r){ return (r["이름"]||"") + "|" + (r["학교"]||"") + "|" + (r["전화뒤4"]||""); }
+
+  function buildFilters(){
+    const weeks = uniq(allRows.map(r=>weekStartKey(r["제출시각"]))).sort().reverse();
+    fillSelectKV("f-week", "전체 주차", weeks.map(w=>({value:w, label:weekLabel(w)})));
+    const times = uniq(allRows.map(r=>r["클리닉시간"])).sort((a,b)=>slotIndex(a)-slotIndex(b));
+    fillSelect("f-time", "전체 시간", times);
+    fillSelect("f-type", "전체 유형", uniq(allRows.map(r=>r["유형"])));
+    fillSelect("f-area", "전체 영역", uniq(allRows.map(r=>r["영역"])));
+    fillSelect("f-school", "전체 학교", uniq(allRows.map(r=>r["학교"])));
+  }
+  function uniq(arr){ return [...new Set(arr.filter(Boolean))]; }
+  function fillSelect(id, allLabel, opts){
+    const sel = $(id), cur = sel.value;
+    sel.innerHTML = `<option value="">${allLabel}</option>` + opts.map(o=>`<option>${esc(o)}</option>`).join("");
+    if (opts.includes(cur)) sel.value = cur;
+  }
+  function fillSelectKV(id, allLabel, opts){
+    const sel = $(id), cur = sel.value;
+    sel.innerHTML = `<option value="">${allLabel}</option>` + opts.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("");
+    if (opts.some(o=>o.value===cur)) sel.value = cur;
+  }
+
+  function currentFiltered(){
+    const q = $("q").value.trim();
+    const fw = $("f-week").value;
+    const ft = $("f-type").value, fa = $("f-area").value, fs = $("f-school").value, fm = $("f-time").value;
+    return allRows.filter(r =>
+      (!q || (r["이름"]||"").includes(q)) &&
+      (!fw || weekStartKey(r["제출시각"]) === fw) &&
+      (!fm || r["클리닉시간"] === fm) &&
+      (!ft || r["유형"] === ft) &&
+      (!fa || r["영역"] === fa) &&
+      (!fs || r["학교"] === fs)
+    );
+  }
+
+  function render(){
+    const rows = currentFiltered();
+
+    // 통계 (현재 필터 기준)
+    $("s-students").textContent = new Set(rows.map(studentKey)).size;
+    $("s-requests").textContent = rows.length;
+    const latest = rows.slice().sort((a,b)=> String(b["제출시각"]).localeCompare(String(a["제출시각"])))[0];
+    $("s-latest").textContent = latest ? shortTime(latest["제출시각"]) : "–";
+    $("s-latest-who").textContent = latest ? (latest["이름"]+" · "+latest["학교"]) : "";
+
+    // 집계 (필터 반영)
+    const timeEntries = countStudentsBy(rows,"클리닉시간").sort((a,b)=>slotIndex(a[0])-slotIndex(b[0]));
+    renderAgg("agg-time", timeEntries, "time");
+    renderAgg("agg-area", countBy(rows,"영역"), "area");
+    renderAgg("agg-type", countBy(rows,"유형"), "type");
+    renderAgg("agg-school", countStudentsBy(rows,"학교"), "school");
+
+    // 목록
+    $("count-label").textContent = view==="stu"
+      ? `학생 ${new Set(rows.map(studentKey)).size}명 / 요청 ${rows.length}건`
+      : `요청 ${rows.length}건`;
+    if (rows.length === 0){ $("list").innerHTML = `<div class="table-card"><div class="empty">조건에 맞는 신청이 없어요.</div></div>`; return; }
+    view==="stu" ? renderStudents(rows) : renderTable(rows);
+  }
+
+  function countBy(rows, key){
+    const m = {};
+    rows.forEach(r => { const v = r[key]; if(v){ m[v] = (m[v]||0)+1; } });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  }
+  // 학생 단위(중복 제거) 집계 — 시간대·학교처럼 '사람 수'가 의미 있는 경우
+  function countStudentsBy(rows, key){
+    const m = {}, seen = {};
+    rows.forEach(r => {
+      const v = r[key]; if(!v) return;
+      const c = v + "\u0000" + studentKey(r);
+      if (seen[c]) return; seen[c] = true;
+      m[v] = (m[v]||0)+1;
+    });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  }
+
+  function renderAgg(id, entries, kind){
+    if (entries.length === 0){ $(id).innerHTML = `<div style="font-size:.8rem;color:var(--ink-soft);">–</div>`; return; }
+    const max = Math.max.apply(null, entries.map(e=>e[1]));
+    const filterId = kind==="type"?"f-type":kind==="area"?"f-area":kind==="time"?"f-time":"f-school";
+    $(id).innerHTML = entries.map(([lab,n])=>{
+      const color = kind==="type" ? (TYPE_BAR[lab]||"var(--accent)") : "var(--accent)";
+      const w = Math.max(6, Math.round(n/max*100));
+      return `<div class="bar-row" data-filter="${filterId}" data-val="${esc(lab)}">
+        <span class="lab" title="${esc(lab)}">${esc(lab)}</span>
+        <span class="bar-wrap"><span class="bar" style="width:${w}%;background:${color};"></span></span>
+        <span class="cnt">${n}</span></div>`;
+    }).join("");
+  }
+
+  function renderTable(rows){
+    rows = rows.slice().sort((a,b)=> String(b["제출시각"]).localeCompare(String(a["제출시각"])));
+    const body = rows.map(r=>{
+      const cls = TYPE_CLASS[r["유형"]] || "add";
+      const cnt = r["질문개수"] ? ` <span style="color:var(--ink-soft);font-size:.78rem;">(${esc(r["질문개수"])})</span>` : "";
+      return `<tr>
+        <td class="when">${esc(shortTime(r["제출시각"]))}</td>
+        <td class="who"><span class="nm">${esc(r["이름"])}</span><br><span class="meta">${esc(r["학교"])} · ${esc(r["전화뒤4"])}</span></td>
+        <td class="area-cell">${esc(r["클리닉시간"])}</td>
+        <td><span class="tag ${cls}">${esc(r["유형"])}</span>${cnt}</td>
+        <td class="area-cell">${esc(r["영역"])}</td>
+        <td class="content">${esc(r["구체내용"])}</td>
+        <td class="memo">${esc(r["메모"])}</td>
+      </tr>`;
+    }).join("");
+    $("list").innerHTML = `<div class="table-card"><div class="tbl-scroll"><table>
+      <thead><tr><th>시각</th><th>학생</th><th>클리닉</th><th>유형</th><th>영역</th><th>내용</th><th>메모</th></tr></thead>
+      <tbody>${body}</tbody></table></div></div>`;
+  }
+
+  function renderStudents(rows){
+    const groups = {};
+    rows.forEach(r=>{ const k=studentKey(r); (groups[k]=groups[k]||[]).push(r); });
+    const ordered = Object.values(groups).sort((a,b)=>
+      String(b[0]["제출시각"]).localeCompare(String(a[0]["제출시각"])));
+    $("list").innerHTML = ordered.map(reqs=>{
+      const r0 = reqs[0];
+      const memo = reqs.map(x=>x["메모"]).find(Boolean);
+      const items = reqs.map(r=>{
+        const cls = TYPE_CLASS[r["유형"]] || "add";
+        const cnt = r["질문개수"] ? ` (${esc(r["질문개수"])})` : "";
+        return `<div class="stu-req">
+          <span class="tag ${cls}">${esc(r["유형"])}</span>
+          <div class="body"><div class="ct">${esc(r["구체내용"])}${cnt}</div>
+          <div class="ar">${esc(r["영역"])}</div></div></div>`;
+      }).join("");
+      return `<div class="stu">
+        <div class="stu-head"><span class="nm">${esc(r0["이름"])}</span>
+          <span class="slot">${esc(r0["클리닉시간"])}</span>
+          <span class="meta">${esc(r0["학교"])} · ${esc(r0["전화뒤4"])}</span>
+          <span class="n">요청 ${reqs.length}건</span></div>
+        ${items}
+        ${memo ? `<div class="stu-memo">메모: ${esc(memo)}</div>` : ""}
+      </div>`;
+    }).join("");
+  }
+
+  function shortTime(s){ s = String(s||""); return s.length>=16 ? s.slice(5) : s; } // MM-dd HH:mm
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+
+  // 이벤트
+  ["q","f-week","f-time","f-type","f-area","f-school"].forEach(id => $(id).addEventListener("input", render));
+  $("refresh").addEventListener("click", fetchData);
+  $("v-req").addEventListener("click", ()=>{ view="req"; $("v-req").classList.add("on"); $("v-stu").classList.remove("on"); render(); });
+  $("v-stu").addEventListener("click", ()=>{ view="stu"; $("v-stu").classList.add("on"); $("v-req").classList.remove("on"); render(); });
+  document.addEventListener("click", e=>{
+    const row = e.target.closest(".bar-row");
+    if(!row) return;
+    const sel = $(row.dataset.filter);
+    sel.value = (sel.value === row.dataset.val) ? "" : row.dataset.val;
+    render();
+  });
+
+  function submitPw(){
+    const v = $("pw").value.trim();
+    if (!v){ $("gate-err").textContent = "비밀번호를 입력해 주세요."; return; }
+    teacherPw = v;
+    $("enter").disabled = true; $("enter").textContent = "확인 중…";
+    $("gate-err").textContent = "";
+    fetchData();
+  }
+  $("enter").addEventListener("click", submitPw);
+  $("pw").addEventListener("keydown", e => { if (e.key === "Enter") submitPw(); });
+
+  $("pw").focus();
+</script>
+</body>
+</html>

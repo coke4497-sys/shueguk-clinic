@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>이수경국어 클리닉 수업 신청</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#FAF8F4;
+    --surface:#FFFFFF;
+    --ink:#23302B;
+    --ink-soft:#5B675F;
+    --accent:#2F6E5A;
+    --accent-dark:#234f41;
+    --accent-warm:#E2A33C;
+    --line:#E7E3DB;
+    --line-strong:#D6D0C4;
+    --error:#C0492F;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(35,48,43,.04), 0 8px 24px rgba(35,48,43,.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    padding:0 0 64px;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:0 18px;}
+
+  /* Header */
+  header{
+    padding:40px 18px 22px;
+    text-align:center;
+  }
+  .brand{
+    font-family:"Gowun Batang",serif;
+    font-weight:700;
+    font-size:1.45rem;
+    color:var(--accent-dark);
+    letter-spacing:-.01em;
+  }
+  .brand .en{color:var(--accent-warm);font-weight:700;letter-spacing:.06em;font-size:.9em;}
+  h1{
+    font-size:1.05rem;
+    font-weight:600;
+    margin:14px 0 0;
+    letter-spacing:-.01em;
+  }
+  .intro{
+    color:var(--ink-soft);
+    font-size:.92rem;
+    margin:10px auto 0;
+    max-width:30em;
+    line-height:1.7;
+  }
+
+  /* Sections */
+  .section{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:20px 18px;
+    margin-top:18px;
+  }
+  .eyebrow{
+    display:flex;align-items:center;gap:8px;
+    font-size:.78rem;font-weight:700;letter-spacing:.04em;
+    color:var(--accent);
+    text-transform:none;
+    margin:0 0 14px;
+  }
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent-warm);}
+
+  label{
+    display:block;
+    font-size:.86rem;
+    font-weight:600;
+    color:var(--ink);
+    margin:0 0 6px;
+  }
+  .field{margin-bottom:16px;}
+  .field:last-child{margin-bottom:0;}
+  .hint{font-size:.78rem;color:var(--ink-soft);font-weight:400;margin-top:5px;}
+
+  input[type=text],select,textarea{
+    width:100%;
+    font:inherit;
+    font-size:1rem;
+    color:var(--ink);
+    background:#fff;
+    border:1px solid var(--line-strong);
+    border-radius:10px;
+    padding:11px 12px;
+    transition:border-color .15s, box-shadow .15s;
+    -webkit-appearance:none;appearance:none;
+  }
+  textarea{resize:vertical;min-height:64px;line-height:1.55;}
+  select{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235B675F' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 14px center;
+    padding-right:36px;
+  }
+  input:focus,select:focus,textarea:focus{
+    outline:none;
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(47,110,90,.14);
+  }
+  .row{display:flex;gap:10px;}
+  .row > *{flex:1;min-width:0;}
+
+  /* Request cards */
+  #requests{margin-top:4px;}
+  .req-card{
+    position:relative;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:16px 14px 14px 18px;
+    margin-bottom:12px;
+    background:#FCFBF8;
+    overflow:hidden;
+  }
+  .req-card::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:5px;
+    background:var(--accent);
+  }
+  .req-card[data-type="질문"]::before{background:#3E78B2;}
+  .req-card[data-type="함께 읽을 지문"]::before{background:var(--accent-warm);}
+  .req-card[data-type="개념 설명"]::before{background:#8A6BB1;}
+  .req-head{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:12px;
+  }
+  .req-num{font-size:.8rem;font-weight:700;color:var(--ink-soft);}
+  .req-remove{
+    border:none;background:none;color:var(--ink-soft);
+    font-size:.82rem;font-weight:600;cursor:pointer;
+    padding:4px 6px;border-radius:6px;
+  }
+  .req-remove:hover{color:var(--error);background:rgba(192,73,47,.08);}
+  .req-remove[hidden]{display:none;}
+  .count-field[hidden]{display:none;}
+
+  .add-btn{
+    width:100%;
+    border:1.5px dashed var(--line-strong);
+    background:#fff;
+    color:var(--accent);
+    font:inherit;font-weight:700;font-size:.92rem;
+    padding:12px;border-radius:11px;cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .add-btn:hover{border-color:var(--accent);background:rgba(47,110,90,.04);}
+
+  /* Submit */
+  .submit-btn{
+    width:100%;
+    border:none;
+    background:var(--accent);
+    color:#fff;
+    font:inherit;font-weight:700;font-size:1.02rem;
+    padding:15px;border-radius:12px;cursor:pointer;
+    margin-top:20px;
+    transition:background .15s, transform .05s;
+  }
+  .submit-btn:hover{background:var(--accent-dark);}
+  .submit-btn:active{transform:translateY(1px);}
+  .submit-btn:disabled{opacity:.6;cursor:default;}
+
+  .err-msg{color:var(--error);font-size:.82rem;margin-top:5px;display:none;font-weight:600;}
+  .field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--error);}
+  .field.invalid .err-msg{display:block;}
+
+  .form-note{text-align:center;color:var(--ink-soft);font-size:.8rem;margin-top:14px;}
+
+  /* Success */
+  #done{display:none;text-align:center;padding:48px 18px;}
+  #done .check{
+    width:64px;height:64px;border-radius:50%;
+    background:rgba(47,110,90,.1);color:var(--accent);
+    display:flex;align-items:center;justify-content:center;
+    margin:0 auto 18px;font-size:1.8rem;
+  }
+  #done h2{font-size:1.2rem;margin:0 0 8px;}
+  #done p{color:var(--ink-soft);font-size:.95rem;margin:0 auto;max-width:24em;line-height:1.7;}
+  .reset-btn{
+    margin-top:22px;border:1px solid var(--line-strong);background:#fff;
+    color:var(--ink);font:inherit;font-weight:600;font-size:.9rem;
+    padding:11px 22px;border-radius:10px;cursor:pointer;
+  }
+
+  @media (max-width:430px){
+    header{padding:30px 18px 16px;}
+    .brand{font-size:1.3rem;}
+    .row{flex-direction:column;gap:0;}
+    .row > *{margin-bottom:16px;}
+    .row > *:last-child{margin-bottom:0;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none !important;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">이수경국어 <span class="en">SHUEGUK</span></div>
+  <h1>클리닉 수업 신청</h1>
+  <p class="intro">안녕하세요 :-) 수경쌤입니다. 우리 친구들에게 가장 좋은 것, 가장 필요한 것으로 준비하려고 해요. 필요한 것만 적고 〈신청하기〉까지 꼭 눌러주세요.</p>
+</header>
+
+<main class="wrap">
+  <form id="form" novalidate>
+    <!-- 기본 정보 -->
+    <div class="section">
+      <p class="eyebrow"><span class="dot"></span>학생 정보</p>
+
+      <div class="field" id="f-name">
+        <label for="name">이름</label>
+        <input type="text" id="name" autocomplete="name" />
+        <p class="err-msg">이름을 입력해 주세요.</p>
+      </div>
+
+      <div class="row">
+        <div class="field" id="f-school" style="margin-bottom:16px;">
+          <label for="school">학교</label>
+          <select id="school">
+            <option value="">선택</option>
+            <option>서정고3 화작</option>
+            <option>능곡고3 언매</option>
+            <option>능곡고3 화작</option>
+            <option>성사고3</option>
+            <option>행신고3 언매</option>
+            <option>행신고3 화작</option>
+            <option>화정고3</option>
+            <option>백양고3 언매</option>
+            <option>백양고3 화작</option>
+            <option>화수고3</option>
+            <option>무원고3 언매</option>
+            <option>무원고3 화작</option>
+            <option>해당 없음</option>
+          </select>
+          <p class="err-msg">학교를 선택해 주세요.</p>
+        </div>
+        <div class="field" id="f-phone" style="margin-bottom:16px;">
+          <label for="phone">식별용 휴대 전화 번호 뒤 네 자리</label>
+          <input type="text" id="phone" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off" />
+          <p class="err-msg">숫자 네 자리를 입력해 주세요.</p>
+        </div>
+      </div>
+
+      <div class="field" id="f-time" style="margin-bottom:0;">
+        <label for="clinic-time">클리닉에 올 시간</label>
+        <select id="clinic-time">
+          <option value="">선택</option>
+          <option>목 저녁 5:30–7:00</option>
+          <option>목 저녁 7:00–8:30</option>
+          <option>금 저녁 7:00–8:30</option>
+          <option>금 저녁 8:30–10:00</option>
+          <option>토 6:00–7:30</option>
+          <option>일 3:30–5:00</option>
+        </select>
+        <p class="err-msg">올 수 있는 시간을 선택해 주세요.</p>
+      </div>
+    </div>
+
+    <!-- 요청 사항 -->
+    <div class="section">
+      <p class="eyebrow"><span class="dot"></span>요청 사항</p>
+      <div id="requests"></div>
+      <button type="button" class="add-btn" id="add">＋ 요청 추가하기</button>
+      <p class="hint" style="margin-top:10px;">추가 문제, 질문, 함께 읽을 지문, 개념 설명을 원하는 만큼 추가할 수 있어요.</p>
+    </div>
+
+    <!-- 마무리 -->
+    <div class="section">
+      <p class="eyebrow"><span class="dot"></span>마무리</p>
+      <div class="field" style="margin-bottom:0;">
+        <label for="memo">수경쌤에게 더 하고 싶은 말 <span style="font-weight:400;color:var(--ink-soft);">(선택)</span></label>
+        <textarea id="memo" placeholder="편하게 적어주세요 :-)"></textarea>
+      </div>
+    </div>
+
+    <button type="submit" class="submit-btn" id="submit">신청하기</button>
+    <p class="form-note">제출하면 신청 시각이 자동으로 기록됩니다.</p>
+  </form>
+
+  <div id="done">
+    <div class="check">✓</div>
+    <h2>신청이 완료되었어요!</h2>
+    <p>소중한 요청 고마워요. 한 순간도 아깝지 않게, 촘촘하고 꼼꼼하게 준비해서 만날게요. 사랑과 응원을 보냅니다 :-)</p>
+    <button type="button" class="reset-btn" id="reset">새로 신청하기</button>
+  </div>
+</main>
+
+<script>
+  /* ============================================================
+     ① 아래 SCRIPT_URL 에 Apps Script 웹앱 배포 주소를 붙여넣으세요.
+        (Code.gs 배포 후 받는 https://script.google.com/macros/s/.../exec 주소)
+     ============================================================ */
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw8e-054e4VUfRRx-PadyuoXRb-jxsKRcdOaq04SJH1oJyFVS_VOh9GUN_pL5cHPPzKVA/exec";
+
+  const TYPES = ["추가 문제", "질문", "함께 읽을 지문", "개념 설명"];
+  const AREAS = [
+    "문학 · 현대시", "문학 · 고전시가", "문학 · 현대소설", "문학 · 고전소설", "문학 · 극/수필",
+    "독서 · 인문", "독서 · 사회", "독서 · 과학", "독서 · 기술", "독서 · 예술", "독서 · 주제통합",
+    "문법 (언어와 매체)", "화법과 작문"
+  ];
+  const COUNTS = ["1~2개", "3~5개", "6개 이상"];
+  const PLACEHOLDERS = {
+    "추가 문제": "예) 정과정 / 학교 프린트 3번 유형 위주로",
+    "질문": "궁금한 작품·단원과 질문 내용을 적어주세요.",
+    "함께 읽을 지문": "예) 김소월 진달래꽃 / 비교 작품으로 읽고 싶어요",
+    "개념 설명": "예) 음운 변동 중 비음화가 헷갈려요"
+  };
+
+  const requestsEl = document.getElementById("requests");
+  let cardSeq = 0;
+
+  function optionList(arr, placeholder){
+    let html = placeholder ? `<option value="">${placeholder}</option>` : "";
+    return html + arr.map(v => `<option>${v}</option>`).join("");
+  }
+
+  function addCard(){
+    cardSeq++;
+    const card = document.createElement("div");
+    card.className = "req-card";
+    card.dataset.type = TYPES[0];
+    card.innerHTML = `
+      <div class="req-head">
+        <span class="req-num">요청 <span class="num"></span></span>
+        <button type="button" class="req-remove">삭제</button>
+      </div>
+      <div class="field type-field">
+        <label>무엇이 필요한가요?</label>
+        <select class="type">${optionList(TYPES)}</select>
+      </div>
+      <div class="field area-field">
+        <label>영역</label>
+        <select class="area">${optionList(AREAS, "영역 선택")}</select>
+        <p class="err-msg">영역을 선택해 주세요.</p>
+      </div>
+      <div class="field content-field" style="margin-bottom:0;">
+        <label>구체적인 작품 · 단원 · 내용</label>
+        <textarea class="content" placeholder="${PLACEHOLDERS[TYPES[0]]}"></textarea>
+        <p class="err-msg">내용을 입력해 주세요.</p>
+      </div>
+      <div class="field count-field" hidden style="margin-top:16px;margin-bottom:0;">
+        <label>질문 개수 (대략)</label>
+        <select class="count">${optionList(COUNTS, "선택")}</select>
+      </div>
+    `;
+    requestsEl.appendChild(card);
+
+    const typeSel = card.querySelector(".type");
+    const countField = card.querySelector(".count-field");
+    const contentEl = card.querySelector(".content");
+    typeSel.addEventListener("change", () => {
+      card.dataset.type = typeSel.value;
+      const isQ = typeSel.value === "질문";
+      countField.hidden = !isQ;
+      contentEl.placeholder = PLACEHOLDERS[typeSel.value] || "";
+    });
+    card.querySelector(".req-remove").addEventListener("click", () => {
+      card.remove();
+      renumber();
+    });
+    card.querySelectorAll("select,textarea").forEach(el =>
+      el.addEventListener("input", () => el.closest(".field").classList.remove("invalid"))
+    );
+    renumber();
+  }
+
+  function renumber(){
+    const cards = requestsEl.querySelectorAll(".req-card");
+    cards.forEach((c, i) => {
+      c.querySelector(".num").textContent = i + 1;
+      c.querySelector(".req-remove").hidden = cards.length <= 1;
+    });
+  }
+
+  document.getElementById("add").addEventListener("click", addCard);
+  addCard(); // 시작 시 1개
+
+  const schoolSel = document.getElementById("school");
+
+  // 유효성 검사 헬퍼
+  function markInvalid(fieldId, bad){
+    document.getElementById(fieldId).classList.toggle("invalid", bad);
+  }
+
+  document.getElementById("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    let ok = true;
+
+    const name = document.getElementById("name").value.trim();
+    markInvalid("f-name", !name); if(!name) ok = false;
+
+    const school = schoolSel.value;
+    markInvalid("f-school", !school); if(!school) ok = false;
+
+    const phone = document.getElementById("phone").value.trim();
+    const phoneOk = /^\d{4}$/.test(phone);
+    markInvalid("f-phone", !phoneOk); if(!phoneOk) ok = false;
+
+    const time = document.getElementById("clinic-time").value;
+    markInvalid("f-time", !time); if(!time) ok = false;
+
+    const requests = [];
+    requestsEl.querySelectorAll(".req-card").forEach(card => {
+      const type = card.querySelector(".type").value;
+      const area = card.querySelector(".area").value;
+      const content = card.querySelector(".content").value.trim();
+      const count = card.querySelector(".count").value;
+      const areaField = card.querySelector(".area-field");
+      const contentField = card.querySelector(".content-field");
+      areaField.classList.toggle("invalid", !area); if(!area) ok = false;
+      contentField.classList.toggle("invalid", !content); if(!content) ok = false;
+      requests.push({ type, area, content, count: type === "질문" ? count : "" });
+    });
+
+    if(!ok){
+      const firstBad = document.querySelector(".field.invalid");
+      if(firstBad) firstBad.scrollIntoView({behavior:"smooth", block:"center"});
+      return;
+    }
+
+    const payload = {
+      name, school, phone, time,
+      requests,
+      memo: document.getElementById("memo").value.trim()
+    };
+
+    const btn = document.getElementById("submit");
+    btn.disabled = true; btn.textContent = "보내는 중…";
+
+    try{
+      await fetch(SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+      document.getElementById("form").style.display = "none";
+      document.getElementById("done").style.display = "block";
+      window.scrollTo({top:0, behavior:"smooth"});
+    }catch(err){
+      btn.disabled = false; btn.textContent = "신청하기";
+      alert("전송에 문제가 생겼어요. 인터넷 연결을 확인하고 다시 시도해 주세요.");
+    }
+  });
+
+  document.getElementById("reset").addEventListener("click", () => location.reload());
+</script>
+</body>
+</html>

@@ -261,12 +261,12 @@
         <label for="clinic-time">클리닉에 올 시간</label>
         <select id="clinic-time">
           <option value="">선택</option>
-          <option>목 저녁 5:30–7:00</option>
-          <option>목 저녁 7:00–8:30</option>
-          <option>금 저녁 7:00–8:30</option>
-          <option>금 저녁 8:30–10:00</option>
-          <option>토 6:00–7:30</option>
-          <option>일 3:30–5:00</option>
+          <option value="목 저녁 5:30–7:00">목 저녁 5:30–7:00</option>
+          <option value="목 저녁 7:00–8:30">목 저녁 7:00–8:30</option>
+          <option value="금 저녁 7:00–8:30">금 저녁 7:00–8:30</option>
+          <option value="금 저녁 8:30–10:00">금 저녁 8:30–10:00</option>
+          <option value="토 6:00–7:30">토 6:00–7:30</option>
+          <option value="일 3:30–5:00">일 3:30–5:00</option>
         </select>
         <p class="err-msg">올 수 있는 시간을 선택해 주세요.</p>
       </div>
@@ -307,6 +307,22 @@
         (Code.gs 배포 후 받는 https://script.google.com/macros/s/.../exec 주소)
      ============================================================ */
   const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw8e-054e4VUfRRx-PadyuoXRb-jxsKRcdOaq04SJH1oJyFVS_VOh9GUN_pL5cHPPzKVA/exec";
+
+  let slotCap = 9;
+  let slotCounts = {};
+
+  // Apps Script 응답을 읽기 위한 JSONP 요청 (마감 여부 확인용)
+  function jsonpRequest(params, onResult, onError){
+    const cb = "shuegukCb" + Date.now() + Math.floor(Math.random()*1000);
+    const script = document.createElement("script");
+    let done = false;
+    const cleanup = () => { window[cb] = undefined; if (script.parentNode) script.parentNode.removeChild(script); };
+    window[cb] = function(resp){ if(done) return; done = true; cleanup(); onResult(resp); };
+    script.onerror = function(){ if(done) return; done = true; cleanup(); if(onError) onError(); };
+    const qs = Object.keys(params).map(k => encodeURIComponent(k)+"="+encodeURIComponent(params[k])).join("&");
+    script.src = SCRIPT_URL + "?" + qs + "&callback=" + cb + "&t=" + Date.now();
+    document.body.appendChild(script);
+  }
 
   const TYPES = ["추가 문제", "질문", "함께 읽을 지문", "개념 설명"];
   const AREAS = [
@@ -393,6 +409,38 @@
 
   const schoolSel = document.getElementById("school");
 
+  // 슬롯 정원 불러와 마감 시간대 비활성화
+  function applySlotAvailability(){
+    const sel = document.getElementById("clinic-time");
+    Array.from(sel.options).forEach(opt => {
+      if (!opt.value) return;
+      const used = slotCounts[opt.value] || 0;
+      if (used >= slotCap){
+        opt.disabled = true;
+        opt.textContent = opt.value + " (마감)";
+        if (sel.value === opt.value) sel.value = "";
+      } else {
+        opt.disabled = false;
+        opt.textContent = opt.value;
+      }
+    });
+  }
+  function loadSlots(){
+    jsonpRequest({ action: "slots" }, function(resp){
+      if (!resp || resp.result !== "success") return;
+      slotCap = resp.cap || 9;
+      slotCounts = resp.counts || {};
+      applySlotAvailability();
+    });
+  }
+  loadSlots();
+
+  document.getElementById("clinic-time").addEventListener("change", () => {
+    const f = document.getElementById("f-time");
+    f.classList.remove("invalid");
+    f.querySelector(".err-msg").textContent = "올 수 있는 시간을 선택해 주세요.";
+  });
+
   // 유효성 검사 헬퍼
   function markInvalid(fieldId, bad){
     document.getElementById(fieldId).classList.toggle("invalid", bad);
@@ -443,20 +491,32 @@
     const btn = document.getElementById("submit");
     btn.disabled = true; btn.textContent = "보내는 중…";
 
-    try{
-      await fetch(SCRIPT_URL, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload)
-      });
-      document.getElementById("form").style.display = "none";
-      document.getElementById("done").style.display = "block";
-      window.scrollTo({top:0, behavior:"smooth"});
-    }catch(err){
+    jsonpRequest({
+      action: "submit",
+      name: payload.name, school: payload.school, phone: payload.phone,
+      time: payload.time, memo: payload.memo,
+      requests: JSON.stringify(payload.requests)
+    }, function(resp){
+      if (resp && resp.result === "success"){
+        document.getElementById("form").style.display = "none";
+        document.getElementById("done").style.display = "block";
+        window.scrollTo({top:0, behavior:"smooth"});
+      } else if (resp && resp.result === "full"){
+        btn.disabled = false; btn.textContent = "신청하기";
+        slotCounts[resp.slot] = resp.cap || slotCap; // 마감 반영
+        applySlotAvailability();
+        const f = document.getElementById("f-time");
+        f.querySelector(".err-msg").textContent = "선택하신 시간은 마감되었어요. 다른 시간을 선택해 주세요.";
+        f.classList.add("invalid");
+        f.scrollIntoView({behavior:"smooth", block:"center"});
+      } else {
+        btn.disabled = false; btn.textContent = "신청하기";
+        alert("전송에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.");
+      }
+    }, function(){
       btn.disabled = false; btn.textContent = "신청하기";
       alert("전송에 문제가 생겼어요. 인터넷 연결을 확인하고 다시 시도해 주세요.");
-    }
+    });
   });
 
   document.getElementById("reset").addEventListener("click", () => location.reload());

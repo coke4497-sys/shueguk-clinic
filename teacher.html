@@ -64,6 +64,20 @@
   .bar-row .cnt{font-size:.8rem;font-weight:700;width:24px;text-align:right;flex:none;color:var(--ink-soft);}
   .bar-row:hover .lab{color:var(--accent-dark);}
 
+  /* Week bar */
+  .weekbar{display:flex;align-items:center;gap:8px;margin:2px 0 16px;}
+  .weekbar select{flex:none;min-width:150px;font:inherit;font-size:.95rem;font-weight:600;color:var(--accent-dark);
+    background:#fff;border:1px solid var(--line-strong);border-radius:10px;padding:10px 30px 10px 12px;
+    -webkit-appearance:none;appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%232F6E5A' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 11px center;}
+  .weekbar select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,110,90,.14);}
+  .wk-nav{border:1px solid var(--line-strong);background:#fff;color:var(--accent);font-size:.85rem;
+    width:38px;height:38px;border-radius:10px;cursor:pointer;flex:none;}
+  .wk-nav:hover:not(:disabled){border-color:var(--accent);background:rgba(47,110,90,.05);}
+  .wk-nav:disabled{opacity:.35;cursor:default;}
+  .wk-hint{font-size:.82rem;color:var(--ink-soft);margin-left:4px;}
+
   /* Controls */
   .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px;}
   .controls input[type=text],.controls select{
@@ -166,6 +180,13 @@
 <div class="state" id="state" style="display:none;">신청 현황을 불러오는 중…</div>
 
 <main class="wrap" id="dashboard">
+  <div class="weekbar">
+    <button class="wk-nav" id="week-prev" title="이전 주">◀</button>
+    <select id="f-week"><option value="">전체 주차</option></select>
+    <button class="wk-nav" id="week-next" title="다음 주">▶</button>
+    <span class="wk-hint" id="week-hint"></span>
+  </div>
+
   <div class="stats">
     <div class="stat"><div class="n" id="s-students">0</div><div class="l">신청 학생 수</div></div>
     <div class="stat"><div class="n" id="s-requests">0</div><div class="l">요청 건수</div></div>
@@ -181,7 +202,6 @@
 
   <div class="controls">
     <input type="text" id="q" placeholder="이름 검색" />
-    <select id="f-week"><option value="">전체 주차</option></select>
     <select id="f-time"><option value="">전체 시간</option></select>
     <select id="f-type"><option value="">전체 유형</option></select>
     <select id="f-area"><option value="">전체 영역</option></select>
@@ -233,6 +253,8 @@
   let view = "req"; // "req" | "stu"
   let authed = false;
   let teacherPw = "";
+  let weekInitialized = false;
+  let weekList = []; // 최근 주가 먼저 (내림차순)
 
   const $ = id => document.getElementById(id);
   function setState(msg, isErr){
@@ -298,8 +320,9 @@
   function studentKey(r){ return (r["이름"]||"") + "|" + (r["학교"]||"") + "|" + (r["전화뒤4"]||""); }
 
   function buildFilters(){
-    const weeks = uniq(allRows.map(r=>weekStartKey(r["제출시각"]))).sort().reverse();
-    fillSelectKV("f-week", "전체 주차", weeks.map(w=>({value:w, label:weekLabel(w)})));
+    weekList = uniq(allRows.map(r=>weekStartKey(r["제출시각"]))).sort().reverse();
+    fillSelectKV("f-week", "전체 주차", weekList.map(w=>({value:w, label:weekLabel(w)})));
+    if (!weekInitialized && weekList.length){ $("f-week").value = weekList[0]; weekInitialized = true; }
     const times = uniq(allRows.map(r=>r["클리닉시간"])).sort((a,b)=>slotIndex(a)-slotIndex(b));
     fillSelect("f-time", "전체 시간", times);
     fillSelect("f-type", "전체 유형", uniq(allRows.map(r=>r["유형"])));
@@ -334,6 +357,7 @@
 
   function render(){
     const rows = currentFiltered();
+    updateWeekNav();
 
     // 통계 (현재 필터 기준)
     $("s-students").textContent = new Set(rows.map(studentKey)).size;
@@ -442,8 +466,29 @@
   }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
 
+  // 주차 내비게이션
+  function updateWeekNav(){
+    const v = $("f-week").value;
+    const has = weekList.length > 0;
+    const idx = weekList.indexOf(v);
+    $("week-next").disabled = !has || idx === 0;                 // 더 최근 주 없음
+    $("week-prev").disabled = !has || idx === weekList.length-1; // 더 이전 주 없음
+    if (v === "" && has){ $("week-next").disabled = false; $("week-prev").disabled = false; }
+    $("week-hint").textContent = (v === "" && has) ? "모든 주차 합산" : "";
+  }
+  function moveWeek(delta){ // delta: +1 이전(◀), -1 다음(▶)
+    if (!weekList.length) return;
+    let idx = weekList.indexOf($("f-week").value);
+    idx = (idx === -1) ? 0 : idx + delta;
+    idx = Math.max(0, Math.min(weekList.length-1, idx));
+    $("f-week").value = weekList[idx];
+    render();
+  }
+
   // 이벤트
   ["q","f-week","f-time","f-type","f-area","f-school"].forEach(id => $(id).addEventListener("input", render));
+  $("week-prev").addEventListener("click", ()=> moveWeek(+1));
+  $("week-next").addEventListener("click", ()=> moveWeek(-1));
   $("refresh").addEventListener("click", fetchData);
   $("v-req").addEventListener("click", ()=>{ view="req"; $("v-req").classList.add("on"); $("v-stu").classList.remove("on"); render(); });
   $("v-stu").addEventListener("click", ()=>{ view="stu"; $("v-stu").classList.add("on"); $("v-req").classList.remove("on"); render(); });

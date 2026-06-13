@@ -207,16 +207,17 @@
   const SLOT_ORDER = ["목 저녁 5:30–7:00","목 저녁 7:00–8:30","금 저녁 7:00–8:30","금 저녁 8:30–10:00","토 6:00–7:30","일 3:30–5:00"];
   const slotIndex = s => { const i = SLOT_ORDER.indexOf(s); return i === -1 ? 99 : i; };
 
-  // 제출 시각을 월요일 시작 주 단위로 묶음
-  function parseDate(ts){
-    const s = String(ts||"").trim(); if(!s) return null;
-    const p = s.split(" ")[0].split("-");
-    if(p.length<3) return null;
-    return new Date(+p[0], +p[1]-1, +p[2]);
+  // 제출 시각을 안전하게 Date 로 변환 (ISO "…T…Z" 또는 "yyyy-MM-dd HH:mm" 모두 처리)
+  function toDate(ts){
+    if(!ts) return null;
+    if(ts instanceof Date) return isNaN(ts) ? null : ts;
+    const s = String(ts).trim();
+    const d = /[TZ]/.test(s) ? new Date(s) : new Date(s.replace(" ", "T"));
+    return isNaN(d) ? null : d;
   }
   function fmtDate(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
   function weekStartKey(ts){
-    const d = parseDate(ts); if(!d) return "";
+    const d = toDate(ts); if(!d) return "";
     const day = d.getDay();                 // 0=일 .. 6=토
     const diff = (day === 0 ? -6 : 1 - day); // 월요일까지
     return fmtDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()+diff));
@@ -434,7 +435,11 @@
     }).join("");
   }
 
-  function shortTime(s){ s = String(s||""); return s.length>=16 ? s.slice(5) : s; } // MM-dd HH:mm
+  function shortTime(ts){
+    const d = toDate(ts); if(!d) return String(ts||"");
+    const p = n => String(n).padStart(2,"0");
+    return (d.getMonth()+1)+"/"+d.getDate()+" "+p(d.getHours())+":"+p(d.getMinutes());
+  }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
 
   // 이벤트

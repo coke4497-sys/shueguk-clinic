@@ -319,7 +319,9 @@
         return;
       }
       if (!authed) enterApp();
-      if (typeof resp.open !== "undefined"){ clinicOpen = !!resp.open; renderOpenState(); }
+      // 백엔드가 open 을 주면 실제 상태로, 아직 옛 백엔드면 기본값(받는 중)으로 항상 버튼 표시
+      if (typeof resp.open !== "undefined") clinicOpen = !!resp.open;
+      renderOpenState();
       allRows = (resp.rows || []).filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]));
       $("updated").textContent = "업데이트 " + new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
       setState("", false);
@@ -550,10 +552,24 @@
 
     const cb = "shuegukSet" + Date.now();
     const script = document.createElement("script");
-    window[cb] = function(resp){
+    let settled = false;
+    const finish = () => {
+      if (settled) return true;
+      settled = true;
+      clearTimeout(timer);
       window[cb] = undefined;
       if (script.parentNode) script.parentNode.removeChild(script);
       btn.disabled = false;
+      return false;
+    };
+    // 옛 백엔드는 setStatus 를 모르고 콜백을 호출하지 않으므로, 응답이 없으면 안내
+    const timer = setTimeout(function(){
+      if (finish()) return;
+      btn.textContent = prev;
+      alert("상태 변경에 응답이 없어요.\nApps Script(Code.gs)를 새 버전으로 재배포했는지 확인해 주세요.");
+    }, 8000);
+    window[cb] = function(resp){
+      if (finish()) return;
       if (resp && resp.result === "success"){
         clinicOpen = !!resp.open;
         renderOpenState();
@@ -565,8 +581,8 @@
       }
     };
     script.onerror = function(){
-      if (script.parentNode) script.parentNode.removeChild(script);
-      btn.disabled = false; btn.textContent = prev;
+      if (finish()) return;
+      btn.textContent = prev;
       alert("상태 변경에 실패했어요. 인터넷 연결을 확인해 주세요.");
     };
     script.src = DATA_URL + "?action=setStatus&open=" + (next ? "1" : "0")

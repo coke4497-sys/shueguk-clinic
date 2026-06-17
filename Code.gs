@@ -1,218 +1,257 @@
 /**
- * 이수경국어 클리닉 신청 백엔드 (Google Apps Script)
- * =====================================================
- * index.html(학생 신청 폼)·teacher.html(교사용 현황) 이 JSONP 로 호출하는 웹앱입니다.
+ * 이수경국어 보충수업 신청 — Apps Script 백엔드
  *
- * [배포 방법]
- *   1) 신청 데이터를 쌓을 Google 스프레드시트를 열고  확장 프로그램 ▸ Apps Script  로 들어갑니다.
- *   2) 이 파일 내용을 Code.gs 에 붙여넣고, 아래 CONFIG 값을 환경에 맞게 고칩니다.
- *   3) 배포 ▸ 새 배포 ▸ 유형: 웹 앱  /  실행 사용자: 나  /  액세스: 모든 사용자
- *      → 받은 ".../exec" 주소를 index.html 의 SCRIPT_URL, teacher.html 의 DATA_URL 에 넣습니다.
+ * ── 설치 순서 ──────────────────────────────────────────────
+ * 1) 구글 스프레드시트를 새로 만들고, 주소창의 .../d/ 와 /edit 사이
+ *    긴 문자열(스프레드시트 ID)을 복사해 아래 SHEET_ID 에 붙여넣으세요.
+ * 2) 스프레드시트에서 [확장 프로그램] → [Apps Script] 를 열고
+ *    이 코드 전체를 붙여넣고 저장하세요.
+ * 3) [배포] → [새 배포] → 유형 '웹 앱' 선택
+ *      - 실행 계정: 나
+ *      - 액세스 권한: 모든 사용자
+ *    배포 후 나오는 .../exec 주소를 복사해
+ *    index.html 의 SCRIPT_URL 에 붙여넣으세요.
+ * 4) 폼 항목을 바꾸면 [배포] → [배포 관리] 에서 기존 배포를
+ *    '수정'해 새 버전으로 올리면 같은 주소가 유지됩니다.
+ * ──────────────────────────────────────────────────────────
  *
- * [이미 운영 중인 Code.gs 가 따로 있다면]
- *   기존 코드를 통째로 덮어쓰지 말고, 아래에서 새로 추가된 부분만 합쳐 주세요:
- *     - isOpen() / setOpen()            : 신청 받기 ON/OFF 상태 (Script Properties 에 저장)
- *     - handleStatus() / handleSetStatus(): 상태 조회·변경 액션 (status / setStatus)
- *     - handleSubmit() 의 맨 앞 isOpen() 차단 + handleSlots() 응답의 open 필드
- *   비밀번호(TEACHER_PW)·시트 이름(SHEET_NAME)·정원(SLOT_CAP)은 기존 설정과 똑같이 맞춰야 합니다.
+ * ── 신청 받기 ON/OFF (중단·재개) ───────────────────────────
+ * 교사용 페이지(teacher.html)의 토글 버튼이 아래 두 액션을 사용합니다.
+ *   - action=status                : 현재 신청 받기 상태 조회
+ *   - action=setStatus&open=1|0&pw= : 신청 받기/중단 전환 (비밀번호 필요)
+ * 상태는 스프레드시트가 아니라 Script Properties 에 저장되며,
+ * 중단 상태에서는 신규 신청 제출(submit)이 막힙니다.
+ * ──────────────────────────────────────────────────────────
  */
 
-/* ===================== CONFIG ===================== */
-// 컨테이너에 바인딩된 시트를 쓰면 비워 두고, 별도 시트면 스프레드시트 ID 를 넣으세요.
-const SHEET_ID   = '';
-// 신청 데이터가 쌓이는 시트 이름
-const SHEET_NAME = '신청';
-// 교사용 페이지·상태 변경에 쓰는 비밀번호 (teacher.html 에서 입력하는 값과 동일하게)
-const TEACHER_PW = 'CHANGE_ME';
-// 클리닉 시간대별 정원 (학생 수 기준)
-const SLOT_CAP   = 9;
+var SHEET_ID = "1q-D_cGhSpVgX5epGKIVy-HH9P26ygj-TeT9yrMaHAO8";
+var SHEET_NAME = "응답";
 
-// 시트 헤더 순서 (1행). 기존 시트가 있다면 그 순서와 일치해야 합니다.
-const HEADERS = ['제출시각', '이름', '학교', '전화뒤4', '클리닉시간', '유형', '영역', '구체내용', '질문개수', '메모'];
+// 교사용 페이지에서 데이터를 읽을 때 요구하는 비밀번호.
+// 이 값은 서버(Apps Script)에만 있고 공개 페이지에는 노출되지 않습니다.
+var TEACHER_PASSWORD = "shueguk";
 
-// 신청 받기 ON/OFF 상태 저장 키 (Script Properties)
-const OPEN_KEY = 'clinicOpen';
-/* ================================================= */
+var HEADERS = ["제출시각", "이름", "학교", "전화뒤4", "클리닉시간", "유형", "영역", "구체내용", "질문개수", "메모"];
 
+// 시간대(슬롯)별 신청 정원 — 학생 수 기준
+var SLOT_CAP = 9;
 
-function doGet(e) {
-  const p = (e && e.parameter) || {};
-  const action = p.action || '';
-  let out;
+// 신청 받기 ON/OFF 상태를 저장하는 Script Properties 키
+var OPEN_KEY = "clinicOpen";
+
+function doPost(e) {
   try {
-    switch (action) {
-      case 'slots':     out = handleSlots();        break;
-      case 'status':    out = handleStatus();       break;
-      case 'setStatus': out = handleSetStatus(p);   break;
-      case 'submit':    out = handleSubmit(p);      break;
-      case 'data':      out = handleData(p);        break;
-      default:          out = { result: 'error', message: 'unknown action' };
-    }
+    var data = JSON.parse(e.postData.contents);
+    return json_(handleSubmit_(data));
   } catch (err) {
-    out = { result: 'error', message: String(err && err.message || err) };
+    return json_({ result: "error", message: String(err) });
   }
-  return reply(out, p.callback);
 }
 
-// JSONP(콜백) 또는 일반 JSON 으로 응답
-function reply(obj, callback) {
-  const json = JSON.stringify(obj);
-  if (callback) {
-    return ContentService
-      .createTextOutput(callback + '(' + json + ');')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
-  }
-  return ContentService
-    .createTextOutput(json)
-    .setMimeType(ContentService.MimeType.JSON);
+// 신청 받기 상태 (기본값: 열림). 한 번도 설정하지 않았으면 신청을 받습니다.
+function isOpen_() {
+  var v = PropertiesService.getScriptProperties().getProperty(OPEN_KEY);
+  return v === null || v === "1";
+}
+function setOpen_(open) {
+  PropertiesService.getScriptProperties().setProperty(OPEN_KEY, open ? "1" : "0");
 }
 
-
-/* ---------- 신청 받기 ON/OFF 상태 ---------- */
-
-// 기본값은 '열림'. 한 번도 설정하지 않았으면 신청을 받습니다.
-function isOpen() {
-  const v = PropertiesService.getScriptProperties().getProperty(OPEN_KEY);
-  return v === null || v === '1';
-}
-
-function setOpen(open) {
-  PropertiesService.getScriptProperties().setProperty(OPEN_KEY, open ? '1' : '0');
-}
-
-// action=status  →  현재 신청 받기 상태
-function handleStatus() {
-  return { result: 'success', open: isOpen() };
-}
-
-// action=setStatus&open=1|0&pw=...  →  상태 변경 (교사 전용)
-function handleSetStatus(p) {
-  if (String(p.pw || '') !== TEACHER_PW) {
-    return { result: 'error', message: 'unauthorized' };
-  }
-  const open = (p.open === '1' || p.open === 'true');
-  setOpen(open);
-  return { result: 'success', open: open };
-}
-
-
-/* ---------- 시간대 정원 ---------- */
-
-// action=slots  →  시간대별 신청 학생 수 + 정원 + 신청 받기 상태
-function handleSlots() {
-  return { result: 'success', cap: SLOT_CAP, counts: slotCounts(), open: isOpen() };
-}
-
-// 시간대별 '학생 수'(이름|학교|전화뒤4 기준 중복 제거)
-function studentsBySlot() {
-  const values = getSheet().getDataRange().getValues();
-  const map = {};
-  if (values.length < 2) return map;
-  const h = values[0];
-  const iTime = h.indexOf('클리닉시간');
-  const iName = h.indexOf('이름');
-  const iSchool = h.indexOf('학교');
-  const iPhone = h.indexOf('전화뒤4');
-  for (let i = 1; i < values.length; i++) {
-    const time = values[i][iTime];
-    if (!time) continue;
-    const key = values[i][iName] + '|' + values[i][iSchool] + '|' + values[i][iPhone];
-    (map[time] = map[time] || {})[key] = true;
-  }
-  return map;
-}
-
-function slotCounts() {
-  const m = studentsBySlot();
-  const out = {};
-  Object.keys(m).forEach(t => { out[t] = Object.keys(m[t]).length; });
-  return out;
-}
-
-
-/* ---------- 신청 제출 ---------- */
-
-// action=submit&name=&school=&phone=&time=&memo=&requests=[...]
-function handleSubmit(p) {
-  // 신청이 중단된 상태면 제출을 막습니다.
-  if (!isOpen()) return { result: 'closed' };
-
-  const name   = String(p.name   || '').trim();
-  const school = String(p.school || '').trim();
-  const phone  = String(p.phone  || '').trim();
-  const time   = String(p.time   || '').trim();
-  const memo   = String(p.memo   || '').trim();
-
-  if (!name || !school || !/^\d{4}$/.test(phone) || !time) {
-    return { result: 'error', message: 'invalid' };
-  }
-
-  let requests = [];
-  try { requests = JSON.parse(p.requests || '[]'); } catch (e) { requests = []; }
-  if (!Array.isArray(requests) || requests.length === 0) {
-    return { result: 'error', message: 'invalid' };
-  }
-
-  const lock = LockService.getScriptLock();
+// 신청 처리 (정원 확인 후 기록). doPost·doGet 양쪽에서 사용.
+function handleSubmit_(data) {
+  var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    // 동시 제출 사이에 닫혔을 수도 있으니 잠금 안에서 한 번 더 확인
-    if (!isOpen()) return { result: 'closed' };
-
-    const sheet = getSheet();
-
-    // 정원 확인 (학생 수 기준). 이미 신청한 학생이 요청을 더 추가하는 건 허용.
-    const slotStudents = studentsBySlot()[time] || {};
-    const key = name + '|' + school + '|' + phone;
-    if (!slotStudents[key] && Object.keys(slotStudents).length >= SLOT_CAP) {
-      return { result: 'full', slot: time, cap: SLOT_CAP };
+    // 신청이 중단된 상태면 제출을 막습니다.
+    if (!isOpen_()) {
+      return { result: "closed" };
     }
 
-    const ts = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
-    const rows = requests.map(r => ([
-      ts, name, school, phone, time,
-      String(r.type || ''), String(r.area || ''), String(r.content || ''), String(r.count || ''), memo
-    ]));
+    var sheet = getSheet_();
+    var nowDate = new Date();
+    var nowWeek = weekKey_(nowDate);
+    var slot = data.time || "";
+
+    // 정원 확인 (같은 '주차 + 시간대'의 학생 수 기준)
+    if (slot) {
+      var info = slotInfo_(sheet, slot, nowWeek);
+      var meKey = (data.name || "") + "|" + (data.school || "") + "|" + (data.phone || "");
+      if (!info.students[meKey] && info.count >= SLOT_CAP) {
+        return { result: "full", slot: slot, cap: SLOT_CAP };
+      }
+    }
+
+    var now = Utilities.formatDate(nowDate, "Asia/Seoul", "yyyy-MM-dd HH:mm");
+    var requests = data.requests || [];
+    if (requests.length === 0) {
+      requests = [{ type: "", area: "", content: "", count: "" }];
+    }
+
+    // 요청 한 건당 한 줄씩 기록
+    var rows = requests.map(function (r) {
+      return [
+        now,
+        data.name || "",
+        data.school || "",
+        "'" + (data.phone || ""), // 앞자리 0 보존을 위해 텍스트로 저장
+        slot,
+        r.type || "",
+        r.area || "",
+        r.content || "",
+        r.count || "",
+        data.memo || ""
+      ];
+    });
+
     sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, HEADERS.length).setValues(rows);
-    return { result: 'success' };
+    return { result: "success", saved: rows.length };
+  } catch (err) {
+    return { result: "error", message: String(err) };
   } finally {
     lock.releaseLock();
   }
 }
 
-
-/* ---------- 교사용 데이터 ---------- */
-
-// action=data&pw=...  →  전체 신청 행 (교사 전용)
-function handleData(p) {
-  if (String(p.pw || '') !== TEACHER_PW) {
-    return { result: 'error', message: 'unauthorized' };
-  }
-  const values = getSheet().getDataRange().getValues();
-  if (values.length < 2) {
-    return { result: 'success', rows: [], open: isOpen() };
-  }
-  const headers = values[0];
-  const rows = [];
-  for (let i = 1; i < values.length; i++) {
-    const obj = {};
-    for (let j = 0; j < headers.length; j++) obj[headers[j]] = values[i][j];
-    rows.push(obj);
-  }
-  return { result: 'success', rows: rows, open: isOpen() };
+// 특정 '주차 + 슬롯'에 이미 신청한 학생 집합과 인원 수
+function slotInfo_(sheet, slot, week) {
+  var values = sheet.getDataRange().getValues();
+  var headers = values.shift() || [];
+  var iT = headers.indexOf("클리닉시간"),
+      iN = headers.indexOf("이름"),
+      iS = headers.indexOf("학교"),
+      iP = headers.indexOf("전화뒤4"),
+      iD = headers.indexOf("제출시각");
+  var students = {};
+  values.forEach(function (r) {
+    if (String(r[iT]) === slot && weekKey_(r[iD]) === week) {
+      students[r[iN] + "|" + r[iS] + "|" + r[iP]] = true;
+    }
+  });
+  return { students: students, count: Object.keys(students).length };
 }
 
+// 이번 주차의 슬롯별 학생 수 (폼에서 마감 표시용)
+function slotCounts_() {
+  var sheet = getSheet_();
+  var values = sheet.getDataRange().getValues();
+  var headers = values.shift() || [];
+  var iT = headers.indexOf("클리닉시간"),
+      iN = headers.indexOf("이름"),
+      iS = headers.indexOf("학교"),
+      iP = headers.indexOf("전화뒤4"),
+      iD = headers.indexOf("제출시각");
+  var week = weekKey_(new Date());
+  var perSlot = {};
+  values.forEach(function (r) {
+    var slot = String(r[iT] || ""); if (!slot) return;
+    if (weekKey_(r[iD]) !== week) return;
+    (perSlot[slot] = perSlot[slot] || {})[r[iN] + "|" + r[iS] + "|" + r[iP]] = true;
+  });
+  var counts = {};
+  Object.keys(perSlot).forEach(function (s) { counts[s] = Object.keys(perSlot[s]).length; });
+  return counts;
+}
 
-/* ---------- 시트 핸들 ---------- */
+// 제출시각을 수요일 시작 주(수~화) 단위 키("yyyy-MM-dd", Asia/Seoul)로 변환
+function weekKey_(v) {
+  var d = parseTs_(v);
+  if (!d) return "";
+  var ymd = Utilities.formatDate(d, "Asia/Seoul", "yyyy-MM-dd").split("-");
+  var y = +ymd[0], mo = +ymd[1], da = +ymd[2];
+  var dow = new Date(Date.UTC(y, mo - 1, da, 12)).getUTCDay(); // 0=일 .. 6=토
+  var since = (dow - 3 + 7) % 7;                               // 수요일(3)로부터 지난 날 수
+  var wed = new Date(Date.UTC(y, mo - 1, da - since, 12));
+  return Utilities.formatDate(wed, "Asia/Seoul", "yyyy-MM-dd");
+}
+function parseTs_(v) {
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (!v) return null;
+  var s = String(v).trim();
+  var d = new Date(s.indexOf("T") > -1 ? s : s.replace(" ", "T"));
+  return isNaN(d.getTime()) ? null : d;
+}
 
-function getSheet() {
-  const ss = SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_NAME);
+function doGet(e) {
+  var params = (e && e.parameter) || {};
+
+  // 폼: 이번 주차의 슬롯별 마감 여부 조회 (학생 수만 반환, 개인정보 없음)
+  if (params.action === "slots") {
+    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_() });
+  }
+
+  // 신청 받기 상태 조회
+  if (params.action === "status") {
+    return reply_(params.callback, { result: "success", open: isOpen_() });
+  }
+
+  // 신청 받기/중단 전환 (교사 전용)
+  if (params.action === "setStatus") {
+    if (params.pw !== TEACHER_PASSWORD) {
+      return reply_(params.callback, { result: "error", message: "unauthorized" });
+    }
+    var open = (params.open === "1" || params.open === "true");
+    setOpen_(open);
+    return reply_(params.callback, { result: "success", open: open });
+  }
+
+  // 폼: 신청 처리 (응답을 읽어 마감 여부를 알려주기 위해 GET 사용)
+  if (params.action === "submit") {
+    var data = {
+      name: params.name, school: params.school, phone: params.phone,
+      time: params.time, memo: params.memo,
+      requests: params.requests ? JSON.parse(params.requests) : []
+    };
+    return reply_(params.callback, handleSubmit_(data));
+  }
+
+  // 교사용 페이지의 데이터 요청
+  if (params.action === "data") {
+    if (params.pw !== TEACHER_PASSWORD) {
+      return reply_(params.callback, { result: "error", message: "unauthorized" });
+    }
+    var sheet = getSheet_();
+    var values = sheet.getDataRange().getValues();
+    var headers = values.shift() || [];
+    var rows = values.map(function (r) {
+      var o = {};
+      headers.forEach(function (h, i) { o[h] = r[i]; });
+      return o;
+    });
+    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_() });
+  }
+
+  return ContentService.createTextOutput("이수경국어 클리닉 수업 신청 엔드포인트가 작동 중입니다.");
+}
+
+// callback 이 있으면 JSONP(자바스크립트), 없으면 일반 JSON 으로 응답
+function reply_(callback, obj) {
+  var body = JSON.stringify(obj);
+  if (callback) {
+    return ContentService
+      .createTextOutput(callback + "(" + body + ");")
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService
+    .createTextOutput(body)
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getSheet_() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(HEADERS);
-  } else if (sheet.getLastRow() === 0) {
-    sheet.appendRow(HEADERS);
+  }
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+    sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight("bold");
+    sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+function json_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }

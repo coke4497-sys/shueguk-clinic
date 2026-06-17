@@ -47,6 +47,13 @@
   .refresh:hover{border-color:var(--accent);color:var(--accent);}
   .refresh:disabled{opacity:.5;cursor:default;}
 
+  /* 신청 받기 ON/OFF 토글 */
+  .toggle-open{border:1px solid var(--line-strong);background:#fff;
+    font:inherit;font-weight:700;font-size:.85rem;padding:9px 16px;border-radius:10px;cursor:pointer;}
+  .toggle-open.open{border-color:var(--accent);color:var(--accent);background:rgba(47,110,90,.06);}
+  .toggle-open.closed{border-color:var(--accent-warm);color:#b07d18;background:rgba(226,163,60,.14);}
+  .toggle-open:disabled{opacity:.6;cursor:default;}
+
   .state{max-width:980px;margin:40px auto;padding:0 20px;text-align:center;color:var(--ink-soft);}
   .state.err{color:var(--error);font-weight:600;}
 
@@ -182,6 +189,7 @@
   </div>
   <div class="head-actions">
     <span class="updated" id="updated"></span>
+    <button class="toggle-open" id="toggle-open" style="display:none;"></button>
     <button class="refresh" id="refresh">새로고침</button>
   </div>
 </header>
@@ -264,6 +272,7 @@
   let view = "req"; // "req" | "stu"
   let authed = false;
   let teacherPw = "";
+  let clinicOpen = true; // 신청 받기 ON/OFF 상태
   let weekInitialized = false;
   let weekList = []; // 최근 주가 먼저 (내림차순)
 
@@ -310,6 +319,7 @@
         return;
       }
       if (!authed) enterApp();
+      if (typeof resp.open !== "undefined"){ clinicOpen = !!resp.open; renderOpenState(); }
       allRows = (resp.rows || []).filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]));
       $("updated").textContent = "업데이트 " + new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
       setState("", false);
@@ -510,6 +520,61 @@
     sel.value = (sel.value === row.dataset.val) ? "" : row.dataset.val;
     render();
   });
+
+  // 신청 받기 ON/OFF 버튼 표시
+  function renderOpenState(){
+    const btn = $("toggle-open");
+    btn.style.display = "inline-block";
+    if (clinicOpen){
+      btn.textContent = "🟢 신청 받는 중";
+      btn.title = "누르면 신청을 중단합니다";
+      btn.classList.add("open"); btn.classList.remove("closed");
+    } else {
+      btn.textContent = "⏸ 신청 중단됨";
+      btn.title = "누르면 신청을 다시 받습니다";
+      btn.classList.add("closed"); btn.classList.remove("open");
+    }
+  }
+
+  // 신청 받기 상태 토글 (교사 비밀번호로 서버에 반영)
+  function toggleOpen(){
+    const next = !clinicOpen;
+    const msg = next
+      ? "지금부터 클리닉 신청을 다시 받을까요?"
+      : "지금부터 클리닉 신청을 중단할까요?\n학생 신청 화면에서 제출이 막히고, 다시 켜기 전까지 신청을 받지 않아요.";
+    if (!window.confirm(msg)) return;
+
+    const btn = $("toggle-open");
+    const prev = btn.textContent;
+    btn.disabled = true; btn.textContent = "변경 중…";
+
+    const cb = "shuegukSet" + Date.now();
+    const script = document.createElement("script");
+    window[cb] = function(resp){
+      window[cb] = undefined;
+      if (script.parentNode) script.parentNode.removeChild(script);
+      btn.disabled = false;
+      if (resp && resp.result === "success"){
+        clinicOpen = !!resp.open;
+        renderOpenState();
+      } else {
+        btn.textContent = prev;
+        alert(resp && resp.message === "unauthorized"
+          ? "권한이 없어요. 새로고침 후 다시 로그인해 주세요."
+          : "상태 변경에 실패했어요. 잠시 후 다시 시도해 주세요.");
+      }
+    };
+    script.onerror = function(){
+      if (script.parentNode) script.parentNode.removeChild(script);
+      btn.disabled = false; btn.textContent = prev;
+      alert("상태 변경에 실패했어요. 인터넷 연결을 확인해 주세요.");
+    };
+    script.src = DATA_URL + "?action=setStatus&open=" + (next ? "1" : "0")
+               + "&pw=" + encodeURIComponent(teacherPw)
+               + "&callback=" + cb + "&t=" + Date.now();
+    document.body.appendChild(script);
+  }
+  $("toggle-open").addEventListener("click", toggleOpen);
 
   function submitPw(){
     const v = $("pw").value.trim();

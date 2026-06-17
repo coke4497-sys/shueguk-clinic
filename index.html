@@ -200,6 +200,17 @@
     padding:11px 22px;border-radius:10px;cursor:pointer;
   }
 
+  /* 신청 중단 안내 */
+  #closed{display:none;text-align:center;padding:48px 18px;}
+  #closed .pause{
+    width:64px;height:64px;border-radius:50%;
+    background:rgba(226,163,60,.16);color:var(--accent-warm);
+    display:flex;align-items:center;justify-content:center;
+    margin:0 auto 18px;font-size:1.7rem;font-weight:700;
+  }
+  #closed h2{font-size:1.2rem;margin:0 0 8px;}
+  #closed p{color:var(--ink-soft);font-size:.95rem;margin:0 auto;max-width:24em;line-height:1.7;}
+
   @media (max-width:430px){
     header{padding:30px 18px 16px;}
     .brand{font-size:1.3rem;}
@@ -298,6 +309,12 @@
     <h2>신청이 완료되었어요!</h2>
     <p>소중한 요청 고마워요. 한 순간도 아깝지 않게, 촘촘하고 꼼꼼하게 준비해서 만날게요. 사랑과 응원을 보냅니다 :-)</p>
     <button type="button" class="reset-btn" id="reset">새로 신청하기</button>
+  </div>
+
+  <div id="closed">
+    <div class="pause">⏸</div>
+    <h2>지금은 신청을 받고 있지 않아요</h2>
+    <p>클리닉 신청이 잠시 중단되었어요. 다시 열리면 신청할 수 있으니 조금만 기다려 주세요 :-)</p>
   </div>
 </main>
 
@@ -425,9 +442,18 @@
       }
     });
   }
+  // 신청이 중단되었을 때 폼 대신 안내 화면 표시
+  function showClosed(){
+    document.getElementById("form").style.display = "none";
+    document.getElementById("done").style.display = "none";
+    document.getElementById("closed").style.display = "block";
+    window.scrollTo({top:0, behavior:"smooth"});
+  }
+
   function loadSlots(){
     jsonpRequest({ action: "slots" }, function(resp){
       if (!resp || resp.result !== "success") return;
+      if (resp.open === false){ showClosed(); return; }  // 신청 중단 상태
       slotCap = resp.cap || 9;
       slotCounts = resp.counts || {};
       applySlotAvailability();
@@ -509,6 +535,9 @@
         f.querySelector(".err-msg").textContent = "선택하신 시간은 마감되었어요. 다른 시간을 선택해 주세요.";
         f.classList.add("invalid");
         f.scrollIntoView({behavior:"smooth", block:"center"});
+      } else if (resp && resp.result === "closed"){
+        // 신청 작성 중에 선생님이 신청을 중단한 경우
+        showClosed();
       } else {
         btn.disabled = false; btn.textContent = "신청하기";
         alert("전송에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.");

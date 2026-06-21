@@ -39,6 +39,21 @@ var SLOT_CAP = 9;
 // 신청 받기 ON/OFF 상태를 저장하는 Script Properties 키
 var OPEN_KEY = "clinicOpen";
 
+// 정원 계산에서 제외할 학생 — 다른 주 클리닉인데 같은 신청 주차 묶음에 들어온 경우.
+//   - name : 학생 이름
+//   - week : 신청 주차 키(그 주의 '수요일', "yyyy-MM-dd"). 생략하면 모든 주차에서 제외.
+// 예) 6/17(수)에 신청했지만 6/21에 클리닉을 끝낸 두 학생을 6/24~6/28 묶음에서 빼기:
+var EXCLUDE = [
+  { name: "강명준", week: "2026-06-17" },
+  { name: "이주원", week: "2026-06-17" }
+];
+function isExcluded_(name, week) {
+  for (var i = 0; i < EXCLUDE.length; i++) {
+    if (EXCLUDE[i].name === name && (!EXCLUDE[i].week || EXCLUDE[i].week === week)) return true;
+  }
+  return false;
+}
+
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
@@ -124,6 +139,7 @@ function slotInfo_(sheet, slot, week) {
   var students = {};
   values.forEach(function (r) {
     if (String(r[iT]) === slot && weekKey_(r[iD]) === week) {
+      if (isExcluded_(r[iN], weekKey_(r[iD]))) return;
       students[r[iN] + "|" + r[iS] + "|" + r[iP]] = true;
     }
   });
@@ -145,6 +161,7 @@ function slotCounts_() {
   values.forEach(function (r) {
     var slot = String(r[iT] || ""); if (!slot) return;
     if (weekKey_(r[iD]) !== week) return;
+    if (isExcluded_(r[iN], weekKey_(r[iD]))) return;
     (perSlot[slot] = perSlot[slot] || {})[r[iN] + "|" + r[iS] + "|" + r[iP]] = true;
   });
   var counts = {};

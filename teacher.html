@@ -241,7 +241,7 @@
 
   const TYPE_CLASS = { "추가 문제":"add", "질문":"q", "함께 읽을 지문":"read", "개념 설명":"concept" };
   const TYPE_BAR   = { "추가 문제":"var(--c-add)", "질문":"var(--c-q)", "함께 읽을 지문":"var(--c-read)", "개념 설명":"var(--c-concept)" };
-  const SLOT_ORDER = ["목 저녁 5:30–7:00","목 저녁 7:00–8:30","금 저녁 7:00–8:30","금 저녁 8:30–10:00","토 6:00–7:30","일 3:30–5:00"];
+  const SLOT_ORDER = ["목 저녁 5:30–7:00","목 저녁 7:00–8:30","목 저녁 8:30–10:00","토 3:30–5:00","토 6:00–7:30","토 7:30–9:00"];
   const slotIndex = s => { const i = SLOT_ORDER.indexOf(s); return i === -1 ? 99 : i; };
 
   // 제출 시각을 안전하게 Date 로 변환 (ISO "…T…Z" 또는 "yyyy-MM-dd HH:mm" 모두 처리)

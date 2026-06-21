@@ -29,7 +29,7 @@ var SHEET_NAME = "응답";
 
 // 교사용 페이지에서 데이터를 읽을 때 요구하는 비밀번호.
 // 이 값은 서버(Apps Script)에만 있고 공개 페이지에는 노출되지 않습니다.
-var TEACHER_PASSWORD = "shueguk";
+var TEACHER_PASSWORD = "sh";
 
 var HEADERS = ["제출시각", "이름", "학교", "전화뒤4", "클리닉시간", "유형", "영역", "구체내용", "질문개수", "메모"];
 

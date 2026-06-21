@@ -39,6 +39,53 @@ var SLOT_CAP = 9;
 // 신청 받기 ON/OFF 상태를 저장하는 Script Properties 키
 var OPEN_KEY = "clinicOpen";
 
+// ── 시간대(슬롯) 관리 ───────────────────────────────────────
+// ALL_SLOTS : 신청 폼에 띄울 수 있는 '전체' 시간대(마스터 목록).
+//             여기에 적어둔 것 중에서 교사 페이지에서 매주 열 시간을 고릅니다.
+//             시간을 새로 추가/삭제하려면 이 목록만 고치면 됩니다.
+var ALL_SLOTS = [
+  "목 저녁 5:30–7:00",
+  "목 저녁 7:00–8:30",
+  "목 저녁 8:30–10:00",
+  "금 저녁 7:00–8:30",
+  "금 저녁 8:30–10:00",
+  "토 3:30–5:00",
+  "토 6:00–7:30",
+  "토 7:30–9:00",
+  "일 3:30–5:00"
+];
+// DEFAULT_SLOTS : 교사가 한 번도 선택하지 않았을 때 기본으로 열어둘 시간대.
+var DEFAULT_SLOTS = [
+  "목 저녁 5:30–7:00",
+  "목 저녁 7:00–8:30",
+  "금 저녁 8:30–10:00",
+  "토 3:30–5:00",
+  "토 6:00–7:30",
+  "토 7:30–9:00"
+];
+// 현재 열려 있는 시간대 선택을 저장하는 Script Properties 키
+var SLOTS_KEY = "activeSlots";
+
+// 현재 열려 있는 시간대 목록 (마스터 목록에 있는 것만, 마스터 순서대로)
+function getActiveSlots_() {
+  var v = PropertiesService.getScriptProperties().getProperty(SLOTS_KEY);
+  if (!v) return DEFAULT_SLOTS.slice();
+  try {
+    var arr = JSON.parse(v);
+    var filtered = ALL_SLOTS.filter(function (s) { return arr.indexOf(s) > -1; });
+    return filtered.length ? filtered : DEFAULT_SLOTS.slice();
+  } catch (e) {
+    return DEFAULT_SLOTS.slice();
+  }
+}
+// 열 시간대 선택 저장 (마스터 목록에 있는 값만 받아들임)
+function setActiveSlots_(arr) {
+  if (!arr || !arr.length) arr = [];
+  var clean = ALL_SLOTS.filter(function (s) { return arr.indexOf(s) > -1; });
+  PropertiesService.getScriptProperties().setProperty(SLOTS_KEY, JSON.stringify(clean));
+  return clean;
+}
+
 // 정원 계산에서 제외할 학생 — 다른 주 클리닉인데 같은 신청 주차 묶음에 들어온 경우.
 //   - name : 학생 이름
 //   - week : 신청 주차 키(그 주의 '수요일', "yyyy-MM-dd"). 생략하면 모든 주차에서 제외.
@@ -193,7 +240,18 @@ function doGet(e) {
 
   // 폼: 이번 주차의 슬롯별 마감 여부 조회 (학생 수만 반환, 개인정보 없음)
   if (params.action === "slots") {
-    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_() });
+    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_(), slots: getActiveSlots_() });
+  }
+
+  // 열 시간대 선택 저장 (교사 전용)
+  if (params.action === "setSlots") {
+    if (params.pw !== TEACHER_PASSWORD) {
+      return reply_(params.callback, { result: "error", message: "unauthorized" });
+    }
+    var sel = [];
+    try { sel = params.slots ? JSON.parse(params.slots) : []; } catch (e) { sel = []; }
+    var saved = setActiveSlots_(sel);
+    return reply_(params.callback, { result: "success", slots: saved });
   }
 
   // 신청 받기 상태 조회
@@ -234,7 +292,7 @@ function doGet(e) {
       headers.forEach(function (h, i) { o[h] = r[i]; });
       return o;
     });
-    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_() });
+    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: ALL_SLOTS });
   }
 
   return ContentService.createTextOutput("이수경국어 클리닉 수업 신청 엔드포인트가 작동 중입니다.");

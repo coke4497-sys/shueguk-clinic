@@ -268,6 +268,26 @@
     return md(cWed)+" ~ "+md(cSun)+" 클리닉";
   }
 
+  /* ============================================================
+     집계에서 제외할 학생
+     ------------------------------------------------------------
+     다른 주 클리닉인데 같은 신청 주차 묶음에 들어온 경우, 여기에 적으면
+     현황·통계에서 보이지 않습니다.
+       - name : 학생 이름
+       - week : 신청 주차 키(그 주의 '수요일', "yyyy-MM-dd").
+                생략하면 모든 주차에서 제외됩니다.
+     예) 6/17(수)에 신청했지만 6/21에 클리닉을 끝낸 두 학생을
+         6/24~6/28 다음주 묶음에서 빼기:
+     ============================================================ */
+  const EXCLUDE = [
+    { name: "강명준", week: "2026-06-17" },
+    { name: "이주원", week: "2026-06-17" },
+  ];
+  function isExcluded(r){
+    const wk = weekStartKey(r["제출시각"]);
+    return EXCLUDE.some(e => e.name === (r["이름"] || "") && (!e.week || e.week === wk));
+  }
+
   let allRows = [];
   let view = "req"; // "req" | "stu"
   let authed = false;
@@ -322,7 +342,9 @@
       // 백엔드가 open 을 주면 실제 상태로, 아직 옛 백엔드면 기본값(받는 중)으로 항상 버튼 표시
       if (typeof resp.open !== "undefined") clinicOpen = !!resp.open;
       renderOpenState();
-      allRows = (resp.rows || []).filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]));
+      allRows = (resp.rows || [])
+        .filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]))
+        .filter(r => !isExcluded(r));
       $("updated").textContent = "업데이트 " + new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
       setState("", false);
       buildFilters();

@@ -450,12 +450,22 @@
     window.scrollTo({top:0, behavior:"smooth"});
   }
 
+  // 서버가 알려준 '열린 시간대'로 선택 목록을 다시 만든다.
+  function buildTimeOptions(slots){
+    const sel = document.getElementById("clinic-time");
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">선택</option>'
+      + slots.map(s => `<option value="${s}">${s}</option>`).join("");
+    if (slots.includes(cur)) sel.value = cur;
+  }
+
   function loadSlots(){
     jsonpRequest({ action: "slots" }, function(resp){
       if (!resp || resp.result !== "success") return;
       if (resp.open === false){ showClosed(); return; }  // 신청 중단 상태
       slotCap = resp.cap || 9;
       slotCounts = resp.counts || {};
+      if (Array.isArray(resp.slots)) buildTimeOptions(resp.slots);  // 교사가 고른 시간대로 갱신
       applySlotAvailability();
     });
   }

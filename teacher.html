@@ -149,6 +149,26 @@
 
   .empty{padding:40px;text-align:center;color:var(--ink-soft);}
 
+  /* 시간대 열기/닫기 관리 */
+  .slotmgr{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 18px;margin-bottom:14px;}
+  .slotmgr-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .slotmgr-head h2{font-size:.9rem;font-weight:700;color:var(--accent);margin:0;}
+  .slotmgr-hint{font-size:.78rem;color:var(--ink-soft);}
+  .slot-list{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .slot-chk{display:flex;align-items:center;gap:8px;border:1px solid var(--line-strong);
+    border-radius:10px;padding:9px 11px;font-size:.85rem;cursor:pointer;background:#fff;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .slot-chk input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex:none;}
+  .slot-chk.on{border-color:var(--accent);background:rgba(47,110,90,.06);color:var(--accent-dark);font-weight:600;}
+  .slotmgr-actions{display:flex;align-items:center;gap:12px;margin-top:12px;}
+  .slot-save{border:none;background:var(--accent);color:#fff;font:inherit;font-weight:700;
+    font-size:.85rem;padding:9px 18px;border-radius:10px;cursor:pointer;}
+  .slot-save:hover{background:var(--accent-dark);}
+  .slot-save:disabled{opacity:.6;cursor:default;}
+  .slot-msg{font-size:.8rem;color:var(--ink-soft);}
+  @media (max-width:720px){ .slot-list{grid-template-columns:repeat(2,1fr);} }
+
   /* 비밀번호 게이트 */
   .gate{max-width:360px;margin:80px auto;padding:0 20px;}
   .gate-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
@@ -197,6 +217,18 @@
 <div class="state" id="state" style="display:none;">신청 현황을 불러오는 중…</div>
 
 <main class="wrap" id="dashboard">
+  <div class="slotmgr" id="slotmgr">
+    <div class="slotmgr-head">
+      <h2>신청받을 시간대 선택</h2>
+      <span class="slotmgr-hint">열고 싶은 시간대만 체크하고 저장하면 학생 신청 폼에 바로 반영됩니다.</span>
+    </div>
+    <div class="slot-list" id="slot-list"></div>
+    <div class="slotmgr-actions">
+      <button class="slot-save" id="slot-save">시간대 저장</button>
+      <span class="slot-msg" id="slot-msg"></span>
+    </div>
+  </div>
+
   <div class="weekbar">
     <button class="wk-nav" id="week-prev" title="이전 주">◀</button>
     <select id="f-week"><option value="">전체 주차</option></select>
@@ -241,7 +273,7 @@
 
   const TYPE_CLASS = { "추가 문제":"add", "질문":"q", "함께 읽을 지문":"read", "개념 설명":"concept" };
   const TYPE_BAR   = { "추가 문제":"var(--c-add)", "질문":"var(--c-q)", "함께 읽을 지문":"var(--c-read)", "개념 설명":"var(--c-concept)" };
-  const SLOT_ORDER = ["목 저녁 5:30–7:00","목 저녁 7:00–8:30","목 저녁 8:30–10:00","토 3:30–5:00","토 6:00–7:30","토 7:30–9:00"];
+  const SLOT_ORDER = ["목 저녁 5:30–7:00","목 저녁 7:00–8:30","목 저녁 8:30–10:00","금 저녁 7:00–8:30","금 저녁 8:30–10:00","토 3:30–5:00","토 6:00–7:30","토 7:30–9:00","일 3:30–5:00"];
   const slotIndex = s => { const i = SLOT_ORDER.indexOf(s); return i === -1 ? 99 : i; };
 
   // 제출 시각을 안전하게 Date 로 변환 (ISO "…T…Z" 또는 "yyyy-MM-dd HH:mm" 모두 처리)
@@ -293,6 +325,7 @@
   let authed = false;
   let teacherPw = "";
   let clinicOpen = true; // 신청 받기 ON/OFF 상태
+  let allSlotsList = []; // 선택 가능한 전체 시간대(마스터 목록)
   let weekInitialized = false;
   let weekList = []; // 최근 주가 먼저 (내림차순)
 
@@ -342,6 +375,10 @@
       // 백엔드가 open 을 주면 실제 상태로, 아직 옛 백엔드면 기본값(받는 중)으로 항상 버튼 표시
       if (typeof resp.open !== "undefined") clinicOpen = !!resp.open;
       renderOpenState();
+      if (Array.isArray(resp.allSlots)){
+        allSlotsList = resp.allSlots;
+        renderSlotPicker(allSlotsList, resp.slots || []);
+      }
       allRows = (resp.rows || [])
         .filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]))
         .filter(r => !isExcluded(r));
@@ -613,6 +650,66 @@
     document.body.appendChild(script);
   }
   $("toggle-open").addEventListener("click", toggleOpen);
+
+  // 신청받을 시간대 체크박스 그리기
+  function renderSlotPicker(all, active){
+    const wrap = $("slot-list");
+    wrap.innerHTML = all.map(s => {
+      const on = active.indexOf(s) > -1;
+      return `<label class="slot-chk${on ? " on" : ""}">`
+        + `<input type="checkbox" value="${esc(s)}"${on ? " checked" : ""}>${esc(s)}</label>`;
+    }).join("");
+    wrap.querySelectorAll("input[type=checkbox]").forEach(cb =>
+      cb.addEventListener("change", () => cb.closest(".slot-chk").classList.toggle("on", cb.checked))
+    );
+    $("slot-msg").textContent = "";
+  }
+
+  // 선택한 시간대를 서버에 저장 (교사 비밀번호 필요)
+  function saveSlots(){
+    const sel = Array.from($("slot-list").querySelectorAll("input[type=checkbox]:checked")).map(cb => cb.value);
+    const btn = $("slot-save");
+    const prev = btn.textContent;
+    btn.disabled = true; btn.textContent = "저장 중…";
+    $("slot-msg").textContent = "";
+
+    const cb = "shuegukSlots" + Date.now();
+    const script = document.createElement("script");
+    let settled = false;
+    const finish = () => {
+      if (settled) return true;
+      settled = true;
+      clearTimeout(timer);
+      window[cb] = undefined;
+      if (script.parentNode) script.parentNode.removeChild(script);
+      btn.disabled = false; btn.textContent = prev;
+      return false;
+    };
+    const timer = setTimeout(function(){
+      if (finish()) return;
+      $("slot-msg").textContent = "응답이 없어요. Apps Script(Code.gs)를 새 버전으로 재배포했는지 확인해 주세요.";
+    }, 8000);
+    window[cb] = function(resp){
+      if (finish()) return;
+      if (resp && resp.result === "success"){
+        renderSlotPicker(allSlotsList, resp.slots || []);
+        $("slot-msg").textContent = "저장됐어요. 학생 신청 폼에 반영됩니다.";
+      } else {
+        $("slot-msg").textContent = (resp && resp.message === "unauthorized")
+          ? "권한이 없어요. 새로고침 후 다시 로그인해 주세요."
+          : "저장에 실패했어요. 잠시 후 다시 시도해 주세요.";
+      }
+    };
+    script.onerror = function(){
+      if (finish()) return;
+      $("slot-msg").textContent = "저장에 실패했어요. 인터넷 연결을 확인해 주세요.";
+    };
+    script.src = DATA_URL + "?action=setSlots&slots=" + encodeURIComponent(JSON.stringify(sel))
+               + "&pw=" + encodeURIComponent(teacherPw)
+               + "&callback=" + cb + "&t=" + Date.now();
+    document.body.appendChild(script);
+  }
+  $("slot-save").addEventListener("click", saveSlots);
 
   function submitPw(){
     const v = $("pw").value.trim();

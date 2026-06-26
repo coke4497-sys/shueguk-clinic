@@ -246,10 +246,22 @@
         <input type="text" id="studentId" inputmode="numeric" maxlength="8" placeholder="예) 010-1234-5678 → 12345678" autocomplete="off" />
         <p class="err-msg">부모님 번호 뒤 8자리를 입력해 주세요.</p>
       </div>
-      <div class="field" id="f-teacher" style="display:none;">
+      <div class="field" id="f-teacher">
         <label for="teacher">담당 강사</label>
-        <input type="text" id="teacher" autocomplete="off" placeholder="예) 이수경" />
-        <p class="err-msg">담당 강사를 입력해 주세요.</p>
+        <select id="teacher">
+          <option value="">선택</option>
+          <option>이은지</option>
+          <option>김덕기</option>
+          <option>김지원</option>
+          <option>김현지</option>
+          <option>남주혜</option>
+          <option>우현정</option>
+          <option>정연주</option>
+          <option>배선주</option>
+          <option>이수경</option>
+          <option>이승연</option>
+        </select>
+        <p class="err-msg">담당 강사를 선택해 주세요.</p>
       </div>
 
       <div class="row">
@@ -449,17 +461,21 @@
 
   // 신원 설정: 개인 링크(토큰)면 이름 자동 채우고 수동 입력칸 숨김. 아니면 수동 입력칸 표시.
   (function setupIdentity(){
+    var teacherSel = document.getElementById("teacher");
     if (HAS_TOKEN){
       if (STUDENT_NM) document.getElementById("name").value = STUDENT_NM;
+      if (STUDENT_TC) teacherSel.value = STUDENT_TC;   // 담당강사 자동 선택(목록에 있으면)
     } else {
+      // 직접 들어온 경우에만 학생ID 입력칸 표시
       document.getElementById("f-studentId").style.display = "";
-      document.getElementById("f-teacher").style.display = "";
-      ["studentId","teacher"].forEach(function(id){
-        document.getElementById(id).addEventListener("input", function(){
-          document.getElementById("f-" + id).classList.remove("invalid");
-        });
+      document.getElementById("studentId").addEventListener("input", function(){
+        document.getElementById("f-studentId").classList.remove("invalid");
       });
     }
+    // 담당강사는 항상 보이며 선택 가능. 바꾸면 오류 표시 해제.
+    teacherSel.addEventListener("change", function(){
+      document.getElementById("f-teacher").classList.remove("invalid");
+    });
   })();
 
   // 슬롯 정원 불러와 마감 시간대 비활성화
@@ -525,15 +541,16 @@
     const name = document.getElementById("name").value.trim();
     markInvalid("f-name", !name); if(!name) ok = false;
 
-    // 학생 식별: 토큰이 있으면 자동값, 없으면 입력값 사용
-    let studentId = STUDENT_SID, teacher = STUDENT_TC;
+    // 담당강사: 항상 드롭다운에서 선택값 사용 (필수)
+    const teacher = document.getElementById("teacher").value.trim();
+    markInvalid("f-teacher", !teacher); if(!teacher) ok = false;
+
+    // 학생ID: 토큰이 있으면 자동값, 없으면 직접 입력(필수, 8자리)
+    let studentId = STUDENT_SID;
     if (!HAS_TOKEN){
       studentId = document.getElementById("studentId").value.trim();
-      teacher   = document.getElementById("teacher").value.trim();
       const idOk = /^\d{8}$/.test(studentId);
       markInvalid("f-studentId", !idOk); if(!idOk) ok = false;
-      const tcOk = !!teacher;
-      markInvalid("f-teacher", !tcOk); if(!tcOk) ok = false;
     }
 
     const school = schoolSel.value;

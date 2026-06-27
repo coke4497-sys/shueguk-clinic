@@ -119,6 +119,26 @@ function setOpen_(open) {
   PropertiesService.getScriptProperties().setProperty(OPEN_KEY, open ? "1" : "0");
 }
 
+// ── 신청 가능 학년 (기본: 고3만, 주차에 따라 고1·고2 추가) ──────────
+var GRADES_KEY = "clinicGrades";
+var ALL_GRADES = ["1", "2", "3"];   // 1=고1, 2=고2, 3=고3
+var DEFAULT_GRADES = ["3"];          // 기본값: 고3만
+function getActiveGrades_() {
+  var v = PropertiesService.getScriptProperties().getProperty(GRADES_KEY);
+  if (!v) return DEFAULT_GRADES.slice();
+  try {
+    var arr = JSON.parse(v);
+    var filtered = ALL_GRADES.filter(function (g) { return arr.indexOf(g) > -1; });
+    return filtered.length ? filtered : DEFAULT_GRADES.slice();
+  } catch (e) { return DEFAULT_GRADES.slice(); }
+}
+function setActiveGrades_(arr) {
+  var clean = ALL_GRADES.filter(function (g) { return (arr || []).indexOf(g) > -1; });
+  if (!clean.length) clean = DEFAULT_GRADES.slice();
+  PropertiesService.getScriptProperties().setProperty(GRADES_KEY, JSON.stringify(clean));
+  return clean;
+}
+
 // 신청 처리 (정원 확인 후 기록). doPost·doGet 양쪽에서 사용.
 function handleSubmit_(data) {
   var lock = LockService.getScriptLock();
@@ -240,7 +260,17 @@ function doGet(e) {
 
   // 폼: 이번 주차의 슬롯별 마감 여부 조회 (학생 수만 반환, 개인정보 없음)
   if (params.action === "slots") {
-    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_(), slots: getActiveSlots_() });
+    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_(), slots: getActiveSlots_(), grades: getActiveGrades_() });
+  }
+
+  // 신청 가능 학년 설정 (교사 전용)
+  if (params.action === "setGrades") {
+    if (params.pw !== TEACHER_PASSWORD) {
+      return reply_(params.callback, { result: "error", message: "unauthorized" });
+    }
+    var gsel = [];
+    try { gsel = params.grades ? JSON.parse(params.grades) : []; } catch (e) { gsel = []; }
+    return reply_(params.callback, { result: "success", grades: setActiveGrades_(gsel) });
   }
 
   // 열 시간대 선택 저장 (교사 전용)
@@ -292,7 +322,7 @@ function doGet(e) {
       headers.forEach(function (h, i) { o[h] = r[i]; });
       return o;
     });
-    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: ALL_SLOTS });
+    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: ALL_SLOTS, grades: getActiveGrades_() });
   }
 
   return ContentService.createTextOutput("이수경국어 클리닉 수업 신청 엔드포인트가 작동 중입니다.");

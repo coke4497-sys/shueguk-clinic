@@ -229,6 +229,18 @@
     </div>
   </div>
 
+  <div class="slotmgr" id="grademgr">
+    <div class="slotmgr-head">
+      <h2>신청 가능 학년</h2>
+      <span class="slotmgr-hint">기본은 고3만. 이번 주에 고1·고2도 받으려면 체크하고 저장하세요.</span>
+    </div>
+    <div class="slot-list" id="grade-list"></div>
+    <div class="slotmgr-actions">
+      <button class="slot-save" id="grade-save">학년 저장</button>
+      <span class="slot-msg" id="grade-msg"></span>
+    </div>
+  </div>
+
   <div class="weekbar">
     <button class="wk-nav" id="week-prev" title="이전 주">◀</button>
     <select id="f-week"><option value="">전체 주차</option></select>
@@ -379,6 +391,7 @@
         allSlotsList = resp.allSlots;
         renderSlotPicker(allSlotsList, resp.slots || []);
       }
+      if (Array.isArray(resp.grades)){ renderGradePicker(resp.grades); }
       allRows = (resp.rows || [])
         .filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]))
         .filter(r => !isExcluded(r));
@@ -710,6 +723,43 @@
     document.body.appendChild(script);
   }
   $("slot-save").addEventListener("click", saveSlots);
+
+  // ── 신청 가능 학년 ──────────────────────────────────────────
+  var GRADE_OPTS = [["1","고1"],["2","고2"],["3","고3"]];
+  function renderGradePicker(active){
+    active = (active && active.length) ? active : ["3"];
+    var wrap = $("grade-list");
+    wrap.innerHTML = GRADE_OPTS.map(function(g){
+      var on = active.indexOf(g[0]) > -1;
+      return '<label class="slot-chk'+(on?' on':'')+'"><input type="checkbox" value="'+g[0]+'"'+(on?' checked':'')+'>'+g[1]+'</label>';
+    }).join("");
+    wrap.querySelectorAll("input[type=checkbox]").forEach(function(cb){
+      cb.addEventListener("change", function(){ cb.closest(".slot-chk").classList.toggle("on", cb.checked); });
+    });
+    $("grade-msg").textContent = "";
+  }
+  function saveGrades(){
+    var sel = Array.from($("grade-list").querySelectorAll("input[type=checkbox]:checked")).map(function(cb){ return cb.value; });
+    if (!sel.length){ $("grade-msg").textContent = "최소 한 학년은 선택하세요."; return; }
+    var btn = $("grade-save"), prev = btn.textContent;
+    btn.disabled = true; btn.textContent = "저장 중…"; $("grade-msg").textContent = "";
+    var cb = "shuegukGr" + Date.now();
+    var script = document.createElement("script");
+    var settled = false;
+    var finish = function(){ if (settled) return true; settled = true; clearTimeout(timer); window[cb] = undefined; if (script.parentNode) script.parentNode.removeChild(script); btn.disabled = false; btn.textContent = prev; return false; };
+    var timer = setTimeout(function(){ if (finish()) return; $("grade-msg").textContent = "응답이 없어요. Code.gs를 새 버전으로 재배포했는지 확인해 주세요."; }, 8000);
+    window[cb] = function(resp){
+      if (finish()) return;
+      if (resp && resp.result === "success"){ renderGradePicker(resp.grades || ["3"]); $("grade-msg").textContent = "저장됐어요. 학생 신청에 반영됩니다."; }
+      else { $("grade-msg").textContent = (resp && resp.message === "unauthorized") ? "권한이 없어요. 새로고침 후 다시 로그인해 주세요." : "저장에 실패했어요. 잠시 후 다시 시도해 주세요."; }
+    };
+    script.onerror = function(){ if (finish()) return; $("grade-msg").textContent = "저장에 실패했어요. 인터넷 연결을 확인해 주세요."; };
+    script.src = DATA_URL + "?action=setGrades&grades=" + encodeURIComponent(JSON.stringify(sel))
+               + "&pw=" + encodeURIComponent(teacherPw)
+               + "&callback=" + cb + "&t=" + Date.now();
+    document.body.appendChild(script);
+  }
+  $("grade-save").addEventListener("click", saveGrades);
 
   function submitPw(){
     const v = $("pw").value.trim();

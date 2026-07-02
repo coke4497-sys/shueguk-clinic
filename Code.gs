@@ -31,7 +31,9 @@ var SHEET_NAME = "응답";
 // 이 값은 서버(Apps Script)에만 있고 공개 페이지에는 노출되지 않습니다.
 var TEACHER_PASSWORD = "sh";
 
-var HEADERS = ["제출시각", "이름", "학교", "전화뒤4", "클리닉시간", "유형", "영역", "구체내용", "질문개수", "메모"];
+var HEADERS = ["제출시각", "이름", "학교", "전화뒤4", "클리닉시간", "유형", "영역", "구체내용", "질문개수", "메모", "학년", "학생ID", "담당강사", "토큰"];
+// ※ '토큰' 열은 학생 개별 페이지(s.html)가 '내 클리닉 신청'을 찾을 때 쓰는 매칭 키입니다.
+//   기존 시트에 열이 없으면 ensureHeaders_()가 자동으로 뒤에 추가합니다.
 
 // 시간대(슬롯)별 신청 정원 — 학생 수 기준
 var SLOT_CAP = 9;
@@ -149,6 +151,12 @@ function handleSubmit_(data) {
       return { result: "closed" };
     }
 
+    // 신청 가능 학년이 아니면 제출을 막습니다. (예: 고3만 열린 주에 고1이 직링크로 제출)
+    var grade = String(data.grade || "").replace(/[^0-9]/g, "");
+    if (grade && getActiveGrades_().indexOf(grade) < 0) {
+      return { result: "grade_closed", grades: getActiveGrades_() };
+    }
+
     var sheet = getSheet_();
     var nowDate = new Date();
     var nowWeek = weekKey_(nowDate);
@@ -181,7 +189,11 @@ function handleSubmit_(data) {
         r.area || "",
         r.content || "",
         r.count || "",
-        data.memo || ""
+        data.memo || "",
+        grade ? ("고" + grade) : "",              // 학년
+        data.studentId ? "'" + data.studentId : "", // 학생ID(부모님 8자리)
+        data.teacher || "",                       // 담당강사
+        String(data.token || "")                  // 토큰 — 학생 페이지 '내 클리닉 신청' 매칭 키
       ];
     });
 
@@ -304,6 +316,10 @@ function doGet(e) {
     var data = {
       name: params.name, school: params.school, phone: params.phone,
       time: params.time, memo: params.memo,
+      grade: params.grade,           // 학년 (신청 가능 학년 확인용)
+      studentId: params.studentId,   // 학생ID(부모님 8자리)
+      teacher: params.teacher,       // 담당강사
+      token: params.token,           // 학생 페이지 토큰 — '내 클리닉 신청' 매칭 키
       requests: params.requests ? JSON.parse(params.requests) : []
     };
     return reply_(params.callback, handleSubmit_(data));
@@ -352,7 +368,19 @@ function getSheet_() {
     sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight("bold");
     sheet.setFrozenRows(1);
   }
+  ensureHeaders_(sheet);   // 기존 시트에 새 열(학년·학생ID·담당강사·토큰) 머리글 자동 추가
   return sheet;
+}
+
+/** 머리글 행에 HEADERS 중 빠진 항목이 있으면 뒤에 추가한다(기존 데이터 보존). */
+function ensureHeaders_(sheet) {
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var head = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h || "").trim(); });
+  var missing = HEADERS.filter(function (h) { return head.indexOf(h) < 0; });
+  if (!missing.length) return;
+  var start = head.filter(String).length + 1;   // 값이 있는 마지막 머리글 다음 칸
+  sheet.getRange(1, start, 1, missing.length).setValues([missing]);
+  sheet.getRange(1, start, 1, missing.length).setFontWeight("bold");
 }
 
 function json_(obj) {

@@ -240,6 +240,17 @@
         <p class="err-msg">이름을 입력해 주세요.</p>
       </div>
 
+      <div class="field" id="f-grade">
+        <label for="grade">학년</label>
+        <select id="grade">
+          <option value="">선택</option>
+          <option value="1">고1</option>
+          <option value="2">고2</option>
+          <option value="3">고3</option>
+        </select>
+        <p class="err-msg">학년을 선택해 주세요.</p>
+      </div>
+
       <!-- 개인 안내 링크(토큰) 없이 들어온 경우에만 보이는 입력칸 -->
       <div class="field" id="f-studentId" style="display:none;">
         <label for="studentId">학생 ID <span style="font-weight:400;color:var(--ink-soft);">(부모님 번호 뒤 8자리)</span></label>
@@ -511,6 +522,17 @@
     if (slots.includes(cur)) sel.value = cur;
   }
 
+  // 이번 주 신청 가능 학년만 학년 선택지에 남긴다. 한 학년뿐이면 자동 선택.
+  function buildGradeOptions(grades){
+    var sel = document.getElementById("grade");
+    if (!sel || !Array.isArray(grades) || !grades.length) return;
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">선택</option>'
+      + grades.map(function(g){ return '<option value="'+g+'">고'+g+'</option>'; }).join("");
+    if (grades.indexOf(cur) > -1) sel.value = cur;
+    else if (grades.length === 1) sel.value = grades[0];
+  }
+
   function loadSlots(){
     jsonpRequest({ action: "slots" }, function(resp){
       if (!resp || resp.result !== "success") return;
@@ -518,10 +540,15 @@
       slotCap = resp.cap || 9;
       slotCounts = resp.counts || {};
       if (Array.isArray(resp.slots)) buildTimeOptions(resp.slots);  // 교사가 고른 시간대로 갱신
+      buildGradeOptions(resp.grades);                               // 신청 가능 학년만 표시
       applySlotAvailability();
     });
   }
   loadSlots();
+
+  document.getElementById("grade").addEventListener("change", function(){
+    document.getElementById("f-grade").classList.remove("invalid");
+  });
 
   document.getElementById("clinic-time").addEventListener("change", () => {
     const f = document.getElementById("f-time");
@@ -540,6 +567,9 @@
 
     const name = document.getElementById("name").value.trim();
     markInvalid("f-name", !name); if(!name) ok = false;
+
+    const grade = document.getElementById("grade").value;
+    markInvalid("f-grade", !grade); if(!grade) ok = false;
 
     // 담당강사: 항상 드롭다운에서 선택값 사용 (필수)
     const teacher = document.getElementById("teacher").value.trim();
@@ -594,7 +624,7 @@
     jsonpRequest({
       action: "submit",
       name: payload.name, school: payload.school, phone: payload.phone,
-      time: payload.time, memo: payload.memo,
+      time: payload.time, memo: payload.memo, grade: grade,
       token: STUDENT_KEY, studentId: studentId, teacher: teacher,
       requests: JSON.stringify(payload.requests)
     }, function(resp){
@@ -610,6 +640,12 @@
         f.querySelector(".err-msg").textContent = "선택하신 시간은 마감되었어요. 다른 시간을 선택해 주세요.";
         f.classList.add("invalid");
         f.scrollIntoView({behavior:"smooth", block:"center"});
+      } else if (resp && resp.result === "grade_closed"){
+        // 이번 주 신청 대상 학년이 아닌 경우
+        btn.disabled = false; btn.textContent = "신청하기";
+        markInvalid("f-grade", true);
+        document.querySelector("#f-grade .err-msg").textContent = "이번 주는 해당 학년 클리닉을 운영하지 않아요.";
+        document.getElementById("f-grade").scrollIntoView({behavior:"smooth", block:"center"});
       } else if (resp && resp.result === "closed"){
         // 신청 작성 중에 선생님이 신청을 중단한 경우
         showClosed();

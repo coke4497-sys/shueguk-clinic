@@ -136,6 +136,13 @@
 
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function norm(x){ return String(x==null?'':x).replace(/\s/g,''); }
+  // 동명이인 토큰 '이름|학교|학년' → '이름(학교 학년)' 로 읽기 좋게
+  function prettyTarget(t){
+    return String(t||'').split(/\s*,\s*/).map(function(x){
+      var p=x.split('|');
+      return p.length>=3 ? p[0]+'('+[p[1],p[2]].filter(Boolean).join(' ')+')' : x;
+    }).join(', ');
+  }
   function pad2(n){ return String(n).padStart(2,'0'); }
   function ymd(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
   // 수~화 주차 키(그 주 수요일)
@@ -201,7 +208,7 @@
         if(!d || d.result!=='success'){ box.innerHTML='<p class="muted">배정 내역을 불러오지 못했어요.</p>'; return; }
         if(!d.assignments.length){ box.innerHTML='<p class="muted">아직 배정된 클리닉 대상이 없어요.</p>'; return; }
         box.innerHTML = '<div class="grp-title">클리닉 배정 내역</div>' + d.assignments.map(function(a){
-          var tgt = (a.type==='전체') ? '전 학년' : (a.target||'—');
+          var tgt = (a.type==='전체') ? '전 학년' : prettyTarget(a.target||'—');
           return '<div class="a-item">' +
             '<span class="a-tag">'+esc(a.type||'전체')+'</span>' +
             '<span class="a-target">'+esc(tgt)+(a.memo?(' · '+esc(a.memo)):'')+'</span>' +
@@ -230,7 +237,17 @@
         var hit=false;
         if(type.indexOf('전체')>=0 || (!type && !tgt)) hit=true;
         else if(type.indexOf('학년')>=0){ hit=tokens.some(function(t){ return norm(s.grade)===norm(t) || norm(s.school+s.grade)===norm(t); }); }
-        else { hit=tokens.some(function(t){ return t===s.name; }); }
+        else { // 개인/일부 — 동명이인은 '이름|학교|학년' 토큰(학교·학년까지 대조)
+          hit=tokens.some(function(t){
+            if(t.indexOf('|')>=0){
+              var p=t.split('|');
+              return p[0]===s.name &&
+                     (!p[1] || looseSchool(p[1], s.school)) &&
+                     (!p[2] || norm(p[2])===norm(s.grade));
+            }
+            return t===s.name;
+          });
+        }
         if(hit) set[s.name+'|'+s.school+'|'+s.grade]=s;
       });
     });

@@ -124,11 +124,30 @@ function setActiveSlots_(arr) {
 var TARGET_KEY = "clinicTarget";
 function getTarget_() {
   var v = PropertiesService.getScriptProperties().getProperty(TARGET_KEY);
-  if (!v) return { type: "전체", target: "" };
-  try {
-    var o = JSON.parse(v);
-    return { type: String(o.type || "전체"), target: String(o.target || "") };
-  } catch (e) { return { type: "전체", target: "" }; }
+  if (v) {
+    try {
+      var o = JSON.parse(v);
+      return { type: String(o.type || "전체"), target: String(o.target || "") };
+    } catch (e) {}
+  }
+  // 대상을 아직 정하지 않았으면 예전 '신청 가능 학년' 설정을 학년 대상으로 이어받음 (기본 고3)
+  var gs = getActiveGrades_();
+  return { type: "학년", target: gs.map(function (g) { return "고" + g; }).join(", ") };
+}
+
+// 대상에서 학년 게이팅용 숫자 목록을 뽑는다 (학생 페이지 카드 게이팅용).
+//  학년 대상 → ["1","3"] 형태 / 전체·개인·일부 → null (학년으로 막지 않음)
+function targetGrades_() {
+  var t = getTarget_();
+  if (!t.type || t.type.indexOf("학년") < 0) return null;
+  var out = {};
+  String(t.target || "").split(/\s*[,\n]\s*/).forEach(function (tok) {
+    var m = tok.match(/([1-3])\s*학년/) || tok.match(/고\s*([1-3])/);
+    var d = m ? (m[1] || m[2]) : tok.replace(/[^0-9]/g, "").slice(-1);
+    if (d === "1" || d === "2" || d === "3") out[d] = true;
+  });
+  var arr = Object.keys(out).sort();
+  return arr.length ? arr : null;
 }
 function setTarget_(sel) {
   var o = { type: String((sel && sel.type) || "전체").slice(0, 20),
@@ -246,19 +265,15 @@ function handleSubmit_(data) {
     }
 
     // 신청 대상(전체/학년/개인/일부)에 해당하지 않으면 제출을 막습니다.
+    // ※ 학년 제한도 대상 설정 하나로 통합 — 예전 '신청 가능 학년' 검사는 폐지
+    //   (대상 미설정 시 getTarget_이 예전 학년 설정을 기본값으로 이어받음)
     var tgt = getTarget_();
     if (!eligibleForTarget_(tgt, data)) {
-      return { result: "not_target" };
+      return tgt.type.indexOf("학년") >= 0
+        ? { result: "grade_closed", grades: targetGrades_() || [] }   // 학년 대상 → 기존 안내문 재사용
+        : { result: "not_target" };
     }
-    // 개인·일부로 콕 집어 선택한 학생은 학년 설정보다 우선 (선택했으면 학년 무관 허용)
-    var explicitPick = tgt && tgt.type &&
-      (tgt.type.indexOf("개인") >= 0 || tgt.type.indexOf("일부") >= 0);
-
-    // 신청 가능 학년이 아니면 제출을 막습니다. (예: 고3만 열린 주에 고1이 직링크로 제출)
     var grade = String(data.grade || "").replace(/[^0-9]/g, "");
-    if (!explicitPick && grade && getActiveGrades_().indexOf(grade) < 0) {
-      return { result: "grade_closed", grades: getActiveGrades_() };
-    }
 
     var sheet = getSheet_();
     var nowDate = new Date();
@@ -376,7 +391,8 @@ function doGet(e) {
   // 폼: 이번 주차의 슬롯별 마감 여부 조회 (학생 수만 반환, 개인정보 없음)
   // targetType: 신청 대상 유형만 공개 (명단은 비공개 — 학생 페이지 카드 게이팅용)
   if (params.action === "slots") {
-    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_(), slots: getActiveSlots_(), grades: getActiveGrades_(), targetType: getTarget_().type });
+    // grades: 대상이 '학년'일 때만 학년 숫자 목록 (전체·개인·일부 → null = 학년으로 안 막음)
+    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_(), slots: getActiveSlots_(), grades: targetGrades_(), targetType: getTarget_().type });
   }
 
   // 시간대 마스터 편집 + 열 시간대 저장 (교사 전용) — 한 번에 저장
@@ -407,7 +423,8 @@ function doGet(e) {
     return reply_(params.callback, { result: "success", target: setTarget_(tsel) });
   }
 
-  // 신청 가능 학년 설정 (교사 전용)
+  // (구버전 호환용) 신청 가능 학년 설정 — 지금은 '신청 대상'으로 통합됨.
+  // 대상을 저장한 뒤에는 이 설정이 쓰이지 않는다 (getTarget_의 기본값 승계용으로만 유지).
   if (params.action === "setGrades") {
     if (params.pw !== TEACHER_PASSWORD) {
       return reply_(params.callback, { result: "error", message: "unauthorized" });
@@ -470,7 +487,7 @@ function doGet(e) {
       headers.forEach(function (h, i) { o[h] = r[i]; });
       return o;
     });
-    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: getMasterSlots_(), grades: getActiveGrades_(), target: getTarget_() });
+    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: getMasterSlots_(), target: getTarget_() });
   }
 
   return ContentService.createTextOutput("이수경국어 클리닉 수업 신청 엔드포인트가 작동 중입니다.");

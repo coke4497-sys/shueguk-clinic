@@ -445,6 +445,14 @@ function doGet(e) {
     return reply_(params.callback, { result: "success", slots: saved });
   }
 
+  // 학생 개별 페이지: 이 학생이 현재 신청 대상인지 (개인정보 없이 true/false만)
+  // ?action=amITarget&name=&school=&grade=&callback=
+  if (params.action === "amITarget") {
+    var tt = getTarget_();
+    var ok = eligibleForTarget_(tt, { name: params.name, school: params.school, grade: params.grade });
+    return reply_(params.callback, { result: "success", eligible: ok, targetType: tt.type, open: isOpen_() });
+  }
+
   // 신청 받기 상태 조회
   if (params.action === "status") {
     return reply_(params.callback, { result: "success", open: isOpen_() });

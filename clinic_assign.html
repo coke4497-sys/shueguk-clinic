@@ -68,6 +68,24 @@
   .pchip .sc{color:#8a9690;font-size:11.5px;}
   .muted{color:#9aa6a0;font-size:13px;}
 
+  /* 시간대 설정 */
+  .slot-list{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px;}
+  .slot-chk{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;
+    padding:9px 11px;font-size:13.5px;cursor:pointer;background:#fff;}
+  .slot-chk input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex:none;}
+  .slot-chk.on{border-color:var(--accent);background:#eef5f1;color:var(--accent);font-weight:600;}
+  .slot-chk .rm{margin-left:auto;flex:none;border:none;background:none;color:#b8c4be;font-size:15px;
+    line-height:1;cursor:pointer;padding:0 2px;}
+  .slot-chk .rm:hover{color:var(--bad);}
+  .slot-addrow{display:flex;gap:8px;margin-top:10px;}
+  .slot-addrow input{flex:1;min-width:0;font:inherit;font-size:14px;border:1.5px solid var(--line);
+    border-radius:10px;padding:10px 12px;background:#fafbfa;}
+  .slot-addrow input:focus{outline:none;border-color:var(--accent);background:#fff;}
+  .slot-add{border:1.5px solid var(--line);background:#fff;color:var(--accent);font:inherit;
+    font-weight:700;font-size:13px;padding:9px 14px;border-radius:10px;cursor:pointer;white-space:nowrap;}
+  .slot-add:hover{border-color:var(--accent);background:#eef5f1;}
+  @media (max-width:480px){ .slot-list{grid-template-columns:1fr;} }
+
   .lock{position:fixed;inset:0;background:var(--bg);z-index:100;display:flex;align-items:center;justify-content:center;padding:24px;}
   .lock-card{background:#fff;border:1px solid var(--line-soft);border-radius:18px;padding:34px 28px;text-align:center;max-width:330px;width:100%;}
   .lock-card .t{font-family:"Gowun Batang",serif;font-weight:700;font-size:20px;color:var(--accent);}
@@ -103,10 +121,27 @@
     <p class="intro">선택한 학생을 클리닉 대상으로 배정하고, 신청/미신청을 확인합니다.</p>
   </header>
 
+  <!-- 신청 설정 (신청받기 · 시간대) -->
+  <section class="card">
+    <h2><span class="dot"></span>신청 설정</h2>
+    <p class="sub">신청받기 상태와 신청 폼에 열릴 시간대를 관리합니다.</p>
+    <button type="button" class="submit" id="openToggle" onclick="toggleOpen()" style="background:#5a8275;">신청 상태 확인 중…</button>
+    <div class="grp-title">신청받을 시간대 <span style="font-weight:400;color:#9aa6a0">(체크 = 열림 · ✕ = 목록에서 삭제)</span></div>
+    <div class="slot-list" id="slotList"><p class="muted">불러오는 중…</p></div>
+    <div class="slot-addrow">
+      <input type="text" id="slotNew" placeholder="예: 수 저녁 7:00–8:30" maxlength="40" />
+      <button type="button" class="slot-add" id="slotAddBtn" onclick="addSlot()">목록에 추가</button>
+    </div>
+    <button type="button" class="submit" id="slotSaveBtn" onclick="saveSlots()">시간대 저장</button>
+    <div class="status" id="slotStatus"></div>
+  </section>
+
   <!-- 배정 -->
   <section class="card">
-    <h2><span class="dot"></span>학생 배정</h2>
-    <p class="sub">클리닉에 와야 할 학생을 선택하세요. (전 학년 / 학년 / 개인 / 일부)</p>
+    <h2><span class="dot"></span>학생 배정 · 신청 대상</h2>
+    <p class="sub">클리닉에 와야 할 학생을 선택하세요. (전 학년 / 학년 / 개인 / 일부)<br>
+      배정을 저장하면 <b>그 학생들만</b> 신청할 수 있고, 학생 개인 페이지에도 그 학생들에게만 클리닉 카드가 열립니다.</p>
+    <div class="wk-note" id="targetCur">현재 신청 대상: 확인 중…</div>
     <div id="picker"></div>
     <label for="memo">비고 <span style="font-weight:400;color:#9aa6a0">(선택 · 예: 6/26주차)</span></label>
     <input type="text" id="memo" placeholder="예: 이번 주 / 보충 대상" />
@@ -130,7 +165,7 @@
   var CLINIC_API = "https://script.google.com/macros/s/AKfycbw8e-054e4VUfRRx-PadyuoXRb-jxsKRcdOaq04SJH1oJyFVS_VOh9GUN_pL5cHPPzKVA/exec";   // 클리닉 백엔드 (신청 기록)
   var REPORT_API = "https://script.google.com/macros/s/AKfycbzhCncBwn-JlqXARC3wfrWUCuNHzlNK2df0bdhx-w78Xr8mzYUcIYZOJdRi9N4bHtsb/exec";       // 리포트 백엔드 (명단·배정)
   var SERVER_PW  = "sh";
-  var PASS_ENC   = "MTAxMDEx";
+  var PASS_ENC   = "c2g=";   // 잠금 비밀번호(sh, base64)
   var LOCK_KEY   = "shueguk_teacher_unlocked";
   var TOOL       = "클리닉";
 
@@ -175,7 +210,92 @@
       }
     });
     loadAssignList();
+    loadClinicSettings();
   }
+
+  /* ===== 신청 설정 (신청받기 · 시간대 · 현재 대상) — 클리닉 백엔드 ===== */
+  var clinicOpen = true, slotMaster = [], slotActive = [];
+  function loadClinicSettings(){
+    fetchJSON(CLINIC_API+'?action=data&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
+      .then(function(d){
+        if(!d || d.result!=='success'){ document.getElementById('slotList').innerHTML='<p class="muted">설정을 불러오지 못했어요. (클리닉 백엔드 재배포 확인)</p>'; return; }
+        clinicOpen = (typeof d.open==='undefined') ? true : !!d.open;
+        slotMaster = (d.allSlots||[]).slice();
+        slotActive = (d.slots||[]).slice();
+        renderOpenBtn(); renderSlots();
+        renderTargetCur(d.target||null);
+      }).catch(function(){ document.getElementById('slotList').innerHTML='<p class="muted">설정을 불러오지 못했어요 — 인터넷 확인</p>'; });
+  }
+  function renderOpenBtn(){
+    var b=document.getElementById('openToggle');
+    b.textContent = clinicOpen ? '🟢 신청 받는 중 — 누르면 중단' : '‖ 신청 중단됨 — 누르면 다시 받기';
+    b.style.background = clinicOpen ? '#5a8275' : '#b07d2b';
+  }
+  function toggleOpen(){
+    var next=!clinicOpen;
+    if(!confirm(next?'지금부터 클리닉 신청을 다시 받을까요?':'지금부터 클리닉 신청을 중단할까요?\n학생 신청 화면에서 제출이 막혀요.')) return;
+    var b=document.getElementById('openToggle'); b.disabled=true;
+    fetchJSON(CLINIC_API+'?action=setStatus&open='+(next?'1':'0')+'&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
+      .then(function(d){ b.disabled=false;
+        if(d&&d.result==='success'){ clinicOpen=!!d.open; renderOpenBtn(); }
+        else alert('상태 변경 실패: '+((d&&d.message)||'오류'));
+      }).catch(function(){ b.disabled=false; alert('상태 변경 실패 — 인터넷 확인'); });
+  }
+  function slotStatus(m,k){ var s=document.getElementById('slotStatus'); s.textContent=m||''; s.className='status'+(k?(' '+k):''); }
+  function renderSlots(){
+    var box=document.getElementById('slotList');
+    if(!slotMaster.length){ box.innerHTML='<p class="muted">시간대가 없어요 — 아래에서 추가하세요.</p>'; return; }
+    box.innerHTML=slotMaster.map(function(s,i){
+      var on=slotActive.indexOf(s)>-1;
+      return '<label class="slot-chk'+(on?' on':'')+'"><input type="checkbox" data-i="'+i+'"'+(on?' checked':'')+'>'+esc(s)+
+             '<button type="button" class="rm" data-i="'+i+'" title="목록에서 삭제">✕</button></label>';
+    }).join('');
+    box.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var s=slotMaster[+cb.dataset.i];
+        if(cb.checked){ if(slotActive.indexOf(s)<0) slotActive.push(s); }
+        else slotActive=slotActive.filter(function(x){ return x!==s; });
+        cb.closest('.slot-chk').classList.toggle('on', cb.checked);
+        slotStatus("변경됨 — '시간대 저장'을 눌러 반영하세요.");
+      });
+    });
+    box.querySelectorAll('button.rm').forEach(function(b){
+      b.addEventListener('click', function(e){
+        e.preventDefault();
+        var s=slotMaster[+b.dataset.i];
+        if(!confirm("'"+s+"' 시간대를 목록에서 지울까요?\n(저장을 눌러야 반영됩니다. 지난 신청 기록은 그대로 남아요.)")) return;
+        slotMaster.splice(+b.dataset.i,1);
+        slotActive=slotActive.filter(function(x){ return x!==s; });
+        renderSlots();
+        slotStatus("변경됨 — '시간대 저장'을 눌러 반영하세요.");
+      });
+    });
+  }
+  function addSlot(){
+    var inp=document.getElementById('slotNew'); var v=inp.value.trim();
+    if(!v){ inp.focus(); return; }
+    if(slotMaster.indexOf(v)>-1){ slotStatus('이미 목록에 있는 시간대예요.','err'); return; }
+    slotMaster.push(v); slotActive.push(v);   // 새 시간대는 바로 '열림'으로
+    renderSlots(); inp.value='';
+    slotStatus("추가됨 — '시간대 저장'을 눌러 반영하세요.");
+  }
+  function saveSlots(){
+    var btn=document.getElementById('slotSaveBtn'); btn.disabled=true; var lb=btn.textContent; btn.textContent='저장 중…';
+    fetchJSON(CLINIC_API+'?action=setSlotMaster&slots='+encodeURIComponent(JSON.stringify(slotMaster))
+      +'&active='+encodeURIComponent(JSON.stringify(slotActive))
+      +'&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
+      .then(function(d){ btn.disabled=false; btn.textContent=lb;
+        if(d&&d.result==='success'){ slotMaster=(d.allSlots||slotMaster).slice(); slotActive=(d.slots||slotActive).slice(); renderSlots(); slotStatus('✓ 저장됐어요. 학생 신청 폼에 바로 반영됩니다.','ok'); }
+        else slotStatus('저장 실패: '+((d&&d.message)==='unauthorized'?'권한 없음':((d&&d.message)||'클리닉 백엔드 재배포 확인')),'err');
+      }).catch(function(){ btn.disabled=false; btn.textContent=lb; slotStatus('저장 실패 — 인터넷 확인','err'); });
+  }
+  function renderTargetCur(t){
+    var el=document.getElementById('targetCur');
+    if(!t){ el.textContent='현재 신청 대상: (클리닉 백엔드 재배포 후 표시됩니다)'; return; }
+    if(!t.type || t.type.indexOf('전체')>=0) el.innerHTML='현재 신청 대상: <b>전 학년 (모든 학생)</b>';
+    else el.innerHTML='현재 신청 대상: <b>'+esc(t.type)+'</b> — '+esc(prettyTarget(t.target)||'—');
+  }
+  document.getElementById('slotNew').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addSlot(); } });
   function fetchJSON(url){ return fetch(url, {cache:'no-store'}).then(function(r){ return r.json(); }); }
   function loadRoster(){ fetchJSON(REPORT_API+'?action=roster&t='+Date.now()).then(function(d){ if(d&&d.result==='success') ROSTER=d.students||[]; }).catch(function(){}); }
 
@@ -192,10 +312,18 @@
     }).then(function(r){ return r.json(); }).then(function(res){
       btn.disabled=false; btn.textContent=lb;
       if(res.result==='success'){
-        setAssignStatus('✓ 배정됨 — '+sel.summary, 'ok');
+        setAssignStatus('✓ 배정됨 — 신청 대상 설정 중…', 'ok');
         if(picker) picker.reset();
         document.getElementById('memo').value='';
         loadAssignList();
+        // 같은 선택을 클리닉 백엔드 '신청 대상'으로도 저장 → 이 학생들만 신청 가능 + 개인 페이지 카드 표시
+        fetchJSON(CLINIC_API+'?action=setTarget&sel='+encodeURIComponent(JSON.stringify({ type:sel.type, target:sel.target }))
+          +'&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
+          .then(function(t){
+            if(t && t.result==='success'){ renderTargetCur(t.target); setAssignStatus('✓ 배정 + 신청 대상 설정 완료 — '+sel.summary, 'ok'); }
+            else setAssignStatus('✓ 배정은 됐지만 신청 대상 설정에 실패했어요 — 클리닉 백엔드 재배포를 확인해 주세요.', 'err');
+          })
+          .catch(function(){ setAssignStatus('✓ 배정은 됐지만 신청 대상 설정에 실패했어요 — 인터넷 확인', 'err'); });
       } else { setAssignStatus('배정 실패: '+(res.message==='unauthorized'?'권한 없음':(res.message||'오류')), 'err'); }
     }).catch(function(){ btn.disabled=false; btn.textContent=lb; setAssignStatus('배정 실패 — 인터넷 확인', 'err'); });
   }

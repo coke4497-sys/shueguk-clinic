@@ -646,6 +646,10 @@
         markInvalid("f-grade", true);
         document.querySelector("#f-grade .err-msg").textContent = "이번 주는 해당 학년 클리닉을 운영하지 않아요.";
         document.getElementById("f-grade").scrollIntoView({behavior:"smooth", block:"center"});
+      } else if (resp && resp.result === "not_target"){
+        // 선생님이 지정한 신청 대상이 아닌 경우
+        btn.disabled = false; btn.textContent = "신청하기";
+        alert("이번 주 클리닉 신청 대상이 아니에요.\n대상 여부는 선생님께 문의해 주세요.");
       } else if (resp && resp.result === "closed"){
         // 신청 작성 중에 선생님이 신청을 중단한 경우
         showClosed();

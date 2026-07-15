@@ -42,9 +42,9 @@ var SLOT_CAP = 9;
 var OPEN_KEY = "clinicOpen";
 
 // ── 시간대(슬롯) 관리 ───────────────────────────────────────
-// ALL_SLOTS : 신청 폼에 띄울 수 있는 '전체' 시간대(마스터 목록).
-//             여기에 적어둔 것 중에서 교사 페이지에서 매주 열 시간을 고릅니다.
-//             시간을 새로 추가/삭제하려면 이 목록만 고치면 됩니다.
+// ALL_SLOTS : 마스터 목록의 '초기값'. 교사 페이지에서 시간대를 직접
+//             추가·삭제하면 Script Properties(slotMaster)에 저장되고,
+//             그 뒤로는 저장된 목록이 이 초기값을 대신합니다.
 var ALL_SLOTS = [
   "목 저녁 5:30–7:00",
   "목 저녁 7:00–8:30",
@@ -67,25 +67,119 @@ var DEFAULT_SLOTS = [
 ];
 // 현재 열려 있는 시간대 선택을 저장하는 Script Properties 키
 var SLOTS_KEY = "activeSlots";
+// 교사가 편집한 시간대 마스터 목록을 저장하는 Script Properties 키
+var SLOT_MASTER_KEY = "slotMaster";
+
+// 시간대 마스터 목록 (교사가 편집했으면 저장본, 아니면 초기값 ALL_SLOTS)
+function getMasterSlots_() {
+  var v = PropertiesService.getScriptProperties().getProperty(SLOT_MASTER_KEY);
+  if (!v) return ALL_SLOTS.slice();
+  try {
+    var arr = JSON.parse(v);
+    if (Array.isArray(arr) && arr.length) return arr;
+  } catch (e) {}
+  return ALL_SLOTS.slice();
+}
+// 마스터 목록 저장 (빈 값·중복 제거, 항목당 40자·최대 30개 제한)
+function setMasterSlots_(arr) {
+  var seen = {}, clean = [];
+  (arr || []).forEach(function (s) {
+    s = String(s || "").trim().slice(0, 40);
+    if (!s || seen[s]) return;
+    seen[s] = true;
+    clean.push(s);
+  });
+  clean = clean.slice(0, 30);
+  if (!clean.length) clean = ALL_SLOTS.slice();
+  PropertiesService.getScriptProperties().setProperty(SLOT_MASTER_KEY, JSON.stringify(clean));
+  return clean;
+}
 
 // 현재 열려 있는 시간대 목록 (마스터 목록에 있는 것만, 마스터 순서대로)
 function getActiveSlots_() {
+  var master = getMasterSlots_();
   var v = PropertiesService.getScriptProperties().getProperty(SLOTS_KEY);
-  if (!v) return DEFAULT_SLOTS.slice();
-  try {
-    var arr = JSON.parse(v);
-    var filtered = ALL_SLOTS.filter(function (s) { return arr.indexOf(s) > -1; });
-    return filtered.length ? filtered : DEFAULT_SLOTS.slice();
-  } catch (e) {
-    return DEFAULT_SLOTS.slice();
+  if (v) {
+    try {
+      var arr = JSON.parse(v);
+      var filtered = master.filter(function (s) { return arr.indexOf(s) > -1; });
+      if (filtered.length) return filtered;
+    } catch (e) {}
   }
+  var def = master.filter(function (s) { return DEFAULT_SLOTS.indexOf(s) > -1; });
+  return def.length ? def : master.slice();
 }
 // 열 시간대 선택 저장 (마스터 목록에 있는 값만 받아들임)
 function setActiveSlots_(arr) {
   if (!arr || !arr.length) arr = [];
-  var clean = ALL_SLOTS.filter(function (s) { return arr.indexOf(s) > -1; });
+  var master = getMasterSlots_();
+  var clean = master.filter(function (s) { return arr.indexOf(s) > -1; });
   PropertiesService.getScriptProperties().setProperty(SLOTS_KEY, JSON.stringify(clean));
   return clean;
+}
+
+// ── 신청 대상 (전체 / 학년 / 개인 / 일부) ───────────────────────
+// 교사 페이지의 학생 선택 위젯이 고른 {type, target}을 저장하고,
+// 제출(submit) 시 그 대상에 해당하는 학생만 신청을 받는다.
+var TARGET_KEY = "clinicTarget";
+function getTarget_() {
+  var v = PropertiesService.getScriptProperties().getProperty(TARGET_KEY);
+  if (!v) return { type: "전체", target: "" };
+  try {
+    var o = JSON.parse(v);
+    return { type: String(o.type || "전체"), target: String(o.target || "") };
+  } catch (e) { return { type: "전체", target: "" }; }
+}
+function setTarget_(sel) {
+  var o = { type: String((sel && sel.type) || "전체").slice(0, 20),
+            target: String((sel && sel.target) || "").slice(0, 4000) };
+  PropertiesService.getScriptProperties().setProperty(TARGET_KEY, JSON.stringify(o));
+  return o;
+}
+
+// 이 학생이 현재 신청 대상인가?
+//  - 전체: 모두 허용 / 학년: 학년 숫자 일치 / 개인·일부: 이름(동명이인은 이름|학교|학년) 일치
+function eligibleForTarget_(sel, data) {
+  if (!sel || !sel.type || sel.type.indexOf("전체") >= 0) return true;
+  // 학년 문자열('2026 고등 3학년')에 공백이 있으므로 쉼표·줄바꿈으로만 나눈다
+  var tokens = String(sel.target || "").split(/\s*[,\n]\s*/)
+    .map(function (t) { return t.trim(); }).filter(String);
+  if (!tokens.length) return true;
+  var name = String(data.name || "").trim();
+  var school = String(data.school || "").trim();
+  var gd = String(data.grade || "").replace(/[^0-9]/g, "").slice(-1);   // 학년 숫자(1~3)
+  if (sel.type.indexOf("학년") >= 0) {
+    return tokens.some(function (t) {
+      var m = String(t).match(/([1-3])\s*학년/) || String(t).match(/고\s*([1-3])/);
+      var d = m ? (m[1] || m[2]) : String(t).replace(/[^0-9]/g, "").slice(-1);
+      return d && gd && d === gd;
+    });
+  }
+  // 개인 · 일부: 이름 또는 동명이인 구분 토큰 '이름|학교|학년'
+  return tokens.some(function (t) {
+    if (t.indexOf("|") >= 0) {
+      var p = t.split("|");
+      var tn = (p[0] || "").trim(), ts = (p[1] || "").trim(), tg = (p[2] || "").trim();
+      if (!tn || tn !== name) return false;
+      if (ts && school && !schoolLoose_(ts, school)) return false;
+      var td = tg.replace(/[^0-9]/g, "").slice(-1);
+      if (td && gd && td !== gd) return false;
+      return true;
+    }
+    return t === name;
+  });
+}
+
+// 학교 이름 느슨 비교 (다른 백엔드들과 동일 규칙)
+function schoolLoose_(a, b) {
+  a = String(a || "").replace(/\s+/g, "");
+  b = String(b || "").replace(/\s+/g, "");
+  if (!a || !b) return false;
+  if (a === b) return true;
+  var na = a.replace(/(등학교|고등학교|중학교|학교|고|중)$/, "");
+  var nb = b.replace(/(등학교|고등학교|중학교|학교|고|중)$/, "");
+  if (na && nb && na === nb) return true;
+  return a.indexOf(b) >= 0 || b.indexOf(a) >= 0;
 }
 
 // 정원 계산에서 제외할 학생 — 다른 주 클리닉인데 같은 신청 주차 묶음에 들어온 경우.
@@ -151,9 +245,18 @@ function handleSubmit_(data) {
       return { result: "closed" };
     }
 
+    // 신청 대상(전체/학년/개인/일부)에 해당하지 않으면 제출을 막습니다.
+    var tgt = getTarget_();
+    if (!eligibleForTarget_(tgt, data)) {
+      return { result: "not_target" };
+    }
+    // 개인·일부로 콕 집어 선택한 학생은 학년 설정보다 우선 (선택했으면 학년 무관 허용)
+    var explicitPick = tgt && tgt.type &&
+      (tgt.type.indexOf("개인") >= 0 || tgt.type.indexOf("일부") >= 0);
+
     // 신청 가능 학년이 아니면 제출을 막습니다. (예: 고3만 열린 주에 고1이 직링크로 제출)
     var grade = String(data.grade || "").replace(/[^0-9]/g, "");
-    if (grade && getActiveGrades_().indexOf(grade) < 0) {
+    if (!explicitPick && grade && getActiveGrades_().indexOf(grade) < 0) {
       return { result: "grade_closed", grades: getActiveGrades_() };
     }
 
@@ -271,8 +374,37 @@ function doGet(e) {
   var params = (e && e.parameter) || {};
 
   // 폼: 이번 주차의 슬롯별 마감 여부 조회 (학생 수만 반환, 개인정보 없음)
+  // targetType: 신청 대상 유형만 공개 (명단은 비공개 — 학생 페이지 카드 게이팅용)
   if (params.action === "slots") {
-    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_(), slots: getActiveSlots_(), grades: getActiveGrades_() });
+    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_(), slots: getActiveSlots_(), grades: getActiveGrades_(), targetType: getTarget_().type });
+  }
+
+  // 시간대 마스터 편집 + 열 시간대 저장 (교사 전용) — 한 번에 저장
+  // ?action=setSlotMaster&slots=[마스터 전체]&active=[열 시간대]&pw=
+  if (params.action === "setSlotMaster") {
+    if (params.pw !== TEACHER_PASSWORD) {
+      return reply_(params.callback, { result: "error", message: "unauthorized" });
+    }
+    var master = [];
+    try { master = params.slots ? JSON.parse(params.slots) : []; } catch (e) { master = []; }
+    var savedMaster = setMasterSlots_(master);
+    var act = [];
+    try { act = params.active ? JSON.parse(params.active) : []; } catch (e) { act = []; }
+    var savedActive = setActiveSlots_(act);
+    return reply_(params.callback, { result: "success", allSlots: savedMaster, slots: savedActive });
+  }
+
+  // 신청 대상 저장 (교사 전용) — ?action=setTarget&sel={"type","target"}&pw=
+  if (params.action === "setTarget") {
+    if (params.pw !== TEACHER_PASSWORD) {
+      return reply_(params.callback, { result: "error", message: "unauthorized" });
+    }
+    var tsel = null;
+    try { tsel = params.sel ? JSON.parse(params.sel) : null; } catch (e) { tsel = null; }
+    if (!tsel || !tsel.type) {
+      return reply_(params.callback, { result: "error", message: "invalid_target" });
+    }
+    return reply_(params.callback, { result: "success", target: setTarget_(tsel) });
   }
 
   // 신청 가능 학년 설정 (교사 전용)
@@ -338,7 +470,7 @@ function doGet(e) {
       headers.forEach(function (h, i) { o[h] = r[i]; });
       return o;
     });
-    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: ALL_SLOTS, grades: getActiveGrades_() });
+    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: getMasterSlots_(), grades: getActiveGrades_(), target: getTarget_() });
   }
 
   return ContentService.createTextOutput("이수경국어 클리닉 수업 신청 엔드포인트가 작동 중입니다.");

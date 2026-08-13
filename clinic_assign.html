@@ -398,10 +398,20 @@
 
       var curWeek = weekKeyOf(new Date());
       // 이번 주 신청: 학생별(name|school 느슨) 슬롯 모음
+      // 주차는 제출일이 아니라 실제 클리닉 날짜(시간대 요일 기준, 제출일 이후 가장 가까운
+      // 그 요일)로 판단 — 일요일에 '금' 시간대를 신청하면 다음 주차로 분류
+      var DOW_KO='일월화수목금토';
+      function meetTs(r){
+        var ts=parseTs(r['제출시각']); if(!ts) return null;
+        var wd=DOW_KO.indexOf(String(r['클리닉시간']||'').trim().charAt(0));
+        if(wd<0) return ts;
+        var ahead=(wd-ts.getDay()+7)%7;
+        return new Date(ts.getFullYear(),ts.getMonth(),ts.getDate()+ahead);
+      }
       var signByName = {};
       (sRes.rows||[]).forEach(function(r){
         var nm=String(r['이름']||'').trim(); if(!nm) return;
-        var ts=parseTs(r['제출시각']); if(!ts || weekKeyOf(ts)!==curWeek) return;
+        var mts=meetTs(r); if(!mts || weekKeyOf(mts)!==curWeek) return;
         var rec = signByName[nm] || (signByName[nm]=[]);
         rec.push({ school:String(r['학교']||'').trim(), slot:String(r['클리닉시간']||'').trim() });
       });

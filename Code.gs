@@ -278,10 +278,11 @@ function handleSubmit_(data) {
 
     var sheet = getSheet_();
     var nowDate = new Date();
-    var nowWeek = weekKey_(nowDate);
     var slot = data.time || "";
+    // 정원 주차 = 지금 신청하면 가게 될 '실제 클리닉 날짜'의 주차
+    var nowWeek = meetWeekKey_(nowDate, slot);
 
-    // 정원 확인 (같은 '주차 + 시간대'의 학생 수 기준)
+    // 정원 확인 (같은 '클리닉 주차 + 시간대'의 학생 수 기준)
     if (slot) {
       var info = slotInfo_(sheet, slot, nowWeek);
       var meKey = (data.name || "") + "|" + (data.school || "") + "|" + (data.phone || "");
@@ -325,7 +326,8 @@ function handleSubmit_(data) {
   }
 }
 
-// 특정 '주차 + 슬롯'에 이미 신청한 학생 집합과 인원 수
+// 특정 '클리닉 주차 + 슬롯'에 이미 신청한 학생 집합과 인원 수
+// (주차는 제출일이 아니라 그 신청이 향하는 실제 클리닉 날짜 기준)
 function slotInfo_(sheet, slot, week) {
   var values = sheet.getDataRange().getValues();
   var headers = values.shift() || [];
@@ -336,7 +338,7 @@ function slotInfo_(sheet, slot, week) {
       iD = headers.indexOf("제출시각");
   var students = {};
   values.forEach(function (r) {
-    if (String(r[iT]) === slot && weekKey_(r[iD]) === week) {
+    if (String(r[iT]) === slot && meetWeekKey_(r[iD], slot) === week) {
       if (isExcluded_(r[iN], weekKey_(r[iD]))) return;
       students[r[iN] + "|" + r[iS] + "|" + r[iP]] = true;
     }
@@ -354,11 +356,14 @@ function slotCounts_() {
       iS = headers.indexOf("학교"),
       iP = headers.indexOf("전화뒤4"),
       iD = headers.indexOf("제출시각");
-  var week = weekKey_(new Date());
+  // 슬롯별 '이번에 신청하면 가게 될 클리닉 주차'와 같은 주차의 신청만 센다
+  var now = new Date();
+  var nowKeys = {};
+  function nowKeyFor(s) { if (!(s in nowKeys)) nowKeys[s] = meetWeekKey_(now, s); return nowKeys[s]; }
   var perSlot = {};
   values.forEach(function (r) {
     var slot = String(r[iT] || ""); if (!slot) return;
-    if (weekKey_(r[iD]) !== week) return;
+    if (meetWeekKey_(r[iD], slot) !== nowKeyFor(slot)) return;
     if (isExcluded_(r[iN], weekKey_(r[iD]))) return;
     (perSlot[slot] = perSlot[slot] || {})[r[iN] + "|" + r[iS] + "|" + r[iP]] = true;
   });
@@ -379,6 +384,23 @@ function weekKey_(v) {
   var since = (dow - 2 + 7) % 7;                               // 화요일(2)로부터 지난 날 수
   var tue = new Date(Date.UTC(y, mo - 1, da - since, 12));
   return Utilities.formatDate(tue, "Asia/Seoul", "yyyy-MM-dd");
+}
+
+// 신청이 향하는 '실제 클리닉 날짜'의 주차 키.
+// 시간대 앞 요일 글자(수·목·금·토·일)로, 제출일 당일 또는 그 이후 가장 가까운
+// 해당 요일을 실제 클리닉 날짜로 보고 그 날짜의 주차(화~월)를 반환한다.
+// 예) 일요일에 '금' 시간대를 신청하면 다음 주 금요일 → 다음 주차로 묶임.
+var DOW_KO_ = "일월화수목금토";
+function meetWeekKey_(ts, slot) {
+  var d = parseTs_(ts);
+  if (!d) return "";
+  var wd = DOW_KO_.indexOf(String(slot || "").trim().charAt(0));
+  if (wd < 0) return weekKey_(ts);   // 요일을 알 수 없는 시간대 → 제출 주차로
+  var ymd = Utilities.formatDate(d, "Asia/Seoul", "yyyy-MM-dd").split("-");
+  var base = new Date(Date.UTC(+ymd[0], +ymd[1] - 1, +ymd[2], 12));
+  var ahead = (wd - base.getUTCDay() + 7) % 7;
+  var meet = new Date(base.getTime() + ahead * 86400000);
+  return weekKey_(Utilities.formatDate(meet, "GMT", "yyyy-MM-dd"));
 }
 function parseTs_(v) {
   if (v instanceof Date) return isNaN(v.getTime()) ? null : v;

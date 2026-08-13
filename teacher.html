@@ -297,6 +297,18 @@
     const since = (d.getDay() - 2 + 7) % 7;  // 화요일(2)로부터 지난 날 수
     return fmtDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()-since));
   }
+  // 실제 클리닉 날짜: 시간대 앞 요일 글자(수·목·금·토·일) 기준, 제출일 당일 또는
+  // 그 이후 가장 가까운 해당 요일. (일요일에 '금' 시간대를 신청하면 → 다음 주 금요일)
+  const DOW_KO = "일월화수목금토";
+  function meetDateOf(r){
+    const d = toDate(r["제출시각"]); if(!d) return null;
+    const wd = DOW_KO.indexOf(String(r["클리닉시간"]||"").trim().charAt(0));
+    if(wd < 0) return d;                       // 요일을 모르는 시간대 → 제출일 기준
+    const ahead = (wd - d.getDay() + 7) % 7;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + ahead);
+  }
+  // 주차 묶음: 실제 클리닉 날짜가 속한 화~월 주
+  function rowWeekKey(r){ return weekStartKey(meetDateOf(r)); }
   // 클리닉 라벨: 신청 주(화~월)와 같은 주의 수~일이 실제 클리닉
   function weekLabel(key){
     const p = key.split("-"); const tue = new Date(+p[0], +p[1]-1, +p[2]);
@@ -403,7 +415,7 @@
   function studentKey(r){ return (r["이름"]||"") + "|" + (r["학교"]||"") + "|" + (r["전화뒤4"]||""); }
 
   function buildFilters(){
-    weekList = uniq(allRows.map(r=>weekStartKey(r["제출시각"]))).sort().reverse();
+    weekList = uniq(allRows.map(r=>rowWeekKey(r))).sort().reverse();
     fillSelectKV("f-week", "전체 주차", weekList.map(w=>({value:w, label:weekLabel(w)})));
     if (!weekInitialized && weekList.length){ $("f-week").value = weekList[0]; weekInitialized = true; }
     const times = uniq(allRows.map(r=>r["클리닉시간"])).sort((a,b)=>slotIndex(a)-slotIndex(b));
@@ -430,7 +442,7 @@
     const ft = $("f-type").value, fa = $("f-area").value, fs = $("f-school").value, fm = $("f-time").value;
     return allRows.filter(r =>
       (!q || (r["이름"]||"").includes(q)) &&
-      (!fw || weekStartKey(r["제출시각"]) === fw) &&
+      (!fw || rowWeekKey(r) === fw) &&
       (!fm || r["클리닉시간"] === fm) &&
       (!ft || r["유형"] === ft) &&
       (!fa || r["영역"] === fa) &&

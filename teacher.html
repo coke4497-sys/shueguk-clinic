@@ -290,17 +290,18 @@
     return isNaN(d) ? null : d;
   }
   function fmtDate(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
-  // 한 주차를 '수~화'로 묶는다. 제출일이 속한 주의 수요일을 반환.
+  // 한 주차를 '화~월'로 묶는다. 제출일이 속한 주의 화요일을 반환.
+  // (클리닉 신청은 매주 화요일에 열리고, 같은 주 수~일에 클리닉을 진행)
   function weekStartKey(ts){
     const d = toDate(ts); if(!d) return "";
-    const since = (d.getDay() - 3 + 7) % 7;  // 수요일(3)로부터 지난 날 수
+    const since = (d.getDay() - 2 + 7) % 7;  // 화요일(2)로부터 지난 날 수
     return fmtDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()-since));
   }
-  // 클리닉 라벨: 신청 주(수~화)의 '다음 주' 수~일이 실제 클리닉
+  // 클리닉 라벨: 신청 주(화~월)와 같은 주의 수~일이 실제 클리닉
   function weekLabel(key){
-    const p = key.split("-"); const wed = new Date(+p[0], +p[1]-1, +p[2]);
-    const cWed = new Date(wed.getFullYear(), wed.getMonth(), wed.getDate()+7);  // 클리닉 수요일
-    const cSun = new Date(wed.getFullYear(), wed.getMonth(), wed.getDate()+11); // 클리닉 일요일
+    const p = key.split("-"); const tue = new Date(+p[0], +p[1]-1, +p[2]);
+    const cWed = new Date(tue.getFullYear(), tue.getMonth(), tue.getDate()+1);  // 클리닉 수요일
+    const cSun = new Date(tue.getFullYear(), tue.getMonth(), tue.getDate()+5);  // 클리닉 일요일
     const md = x => (x.getMonth()+1)+"/"+x.getDate();
     return md(cWed)+" ~ "+md(cSun)+" 클리닉";
   }
@@ -311,14 +312,14 @@
      다른 주 클리닉인데 같은 신청 주차 묶음에 들어온 경우, 여기에 적으면
      현황·통계에서 보이지 않습니다.
        - name : 학생 이름
-       - week : 신청 주차 키(그 주의 '수요일', "yyyy-MM-dd").
+       - week : 신청 주차 키(그 주의 '화요일', "yyyy-MM-dd").
                 생략하면 모든 주차에서 제외됩니다.
      예) 6/17(수)에 신청했지만 6/21에 클리닉을 끝낸 두 학생을
-         6/24~6/28 다음주 묶음에서 빼기:
+         그 주 묶음에서 빼기 (6/17이 속한 주의 화요일 = 6/16):
      ============================================================ */
   const EXCLUDE = [
-    { name: "강명준", week: "2026-06-17" },
-    { name: "이주원", week: "2026-06-17" },
+    { name: "강명준", week: "2026-06-16" },
+    { name: "이주원", week: "2026-06-16" },
   ];
   function isExcluded(r){
     const wk = weekStartKey(r["제출시각"]);

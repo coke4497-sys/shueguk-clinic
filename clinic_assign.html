@@ -153,7 +153,7 @@
   <!-- 현황 -->
   <section class="card">
     <h2><span class="dot"></span>신청 현황</h2>
-    <p class="sub">배정된 학생과 이번 주(수~화) 클리닉 신청을 대조합니다. (이름+학교 기준)</p>
+    <p class="sub">배정된 학생과 이번 주(화요일 오픈 · 수~일 진행) 클리닉 신청을 대조합니다. (이름+학교 기준)</p>
     <button type="button" class="submit" id="statusBtn" onclick="loadStatus()" style="background:#5a8275;">현황 불러오기 / 새로고침</button>
     <div id="statusBody" style="margin-top:16px;"></div>
   </section>
@@ -180,10 +180,10 @@
   }
   function pad2(n){ return String(n).padStart(2,'0'); }
   function ymd(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
-  // 수~화 주차 키(그 주 수요일)
-  function weekKeyOf(d){ var dow=d.getDay(), since=(dow-3+7)%7; return ymd(new Date(d.getFullYear(),d.getMonth(),d.getDate()-since)); }
+  // 화~월 주차 키(그 주 화요일) — 신청은 화요일 오픈, 같은 주 수~일에 클리닉 진행
+  function weekKeyOf(d){ var dow=d.getDay(), since=(dow-2+7)%7; return ymd(new Date(d.getFullYear(),d.getMonth(),d.getDate()-since)); }
   function parseTs(v){ if(!v) return null; if(v instanceof Date) return v; var s=String(v).trim(); var d=new Date(s.indexOf('T')>-1?s:s.replace(' ','T')); return isNaN(d.getTime())?null:d; }
-  function weekLabel(key){ var p=key.split('-'); var wed=new Date(+p[0],+p[1]-1,+p[2]); var tue=new Date(wed.getFullYear(),wed.getMonth(),wed.getDate()+6); var f=function(x){return (x.getMonth()+1)+'/'+x.getDate();}; return f(wed)+'~'+f(tue); }
+  function weekLabel(key){ var p=key.split('-'); var tue=new Date(+p[0],+p[1]-1,+p[2]); var wed=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()+1); var sun=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()+5); var f=function(x){return (x.getMonth()+1)+'/'+x.getDate();}; return f(wed)+'~'+f(sun); }
 
   /* ===== 잠금 ===== */
   (function(){ try{ if(localStorage.getItem(LOCK_KEY)==='1'){ unlock(); } }catch(e){} })();
@@ -429,7 +429,7 @@
       });
       var warnCnt = done.concat(todo).filter(function(r){ return r.ambiguous; }).length;
 
-      var html = '<div class="wk-note">이번 주 클리닉 <b>'+weekLabel(curWeek)+'</b> (수~화) 신청 기준</div>';
+      var html = '<div class="wk-note">이번 주 클리닉 <b>'+weekLabel(curWeek)+'</b> (화요일 오픈 주차) 신청 기준</div>';
       html += '<div class="stat-row">' +
         '<div class="stat assigned"><div class="n">'+assigned.length+'</div><div class="l">배정</div></div>' +
         '<div class="stat done"><div class="n">'+done.length+'</div><div class="l">신청</div></div>' +

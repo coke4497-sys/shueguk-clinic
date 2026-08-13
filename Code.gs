@@ -203,11 +203,12 @@ function schoolLoose_(a, b) {
 
 // 정원 계산에서 제외할 학생 — 다른 주 클리닉인데 같은 신청 주차 묶음에 들어온 경우.
 //   - name : 학생 이름
-//   - week : 신청 주차 키(그 주의 '수요일', "yyyy-MM-dd"). 생략하면 모든 주차에서 제외.
-// 예) 6/17(수)에 신청했지만 6/21에 클리닉을 끝낸 두 학생을 6/24~6/28 묶음에서 빼기:
+//   - week : 신청 주차 키(그 주의 '화요일', "yyyy-MM-dd"). 생략하면 모든 주차에서 제외.
+// 예) 6/17(수)에 신청했지만 6/21에 클리닉을 끝낸 두 학생을 그 주 묶음에서 빼기
+//     (6/17이 속한 주의 화요일 = 6/16):
 var EXCLUDE = [
-  { name: "강명준", week: "2026-06-17" },
-  { name: "이주원", week: "2026-06-17" }
+  { name: "강명준", week: "2026-06-16" },
+  { name: "이주원", week: "2026-06-16" }
 ];
 function isExcluded_(name, week) {
   for (var i = 0; i < EXCLUDE.length; i++) {
@@ -366,16 +367,18 @@ function slotCounts_() {
   return counts;
 }
 
-// 제출시각을 수요일 시작 주(수~화) 단위 키("yyyy-MM-dd", Asia/Seoul)로 변환
+// 제출시각을 화요일 시작 주(화~월) 단위 키("yyyy-MM-dd", Asia/Seoul)로 변환
+// (클리닉 신청은 매주 화요일에 열리고, 같은 주 수~일에 클리닉을 진행 —
+//  정원 계산도 이 화요일 오픈 주차 단위로 묶는다)
 function weekKey_(v) {
   var d = parseTs_(v);
   if (!d) return "";
   var ymd = Utilities.formatDate(d, "Asia/Seoul", "yyyy-MM-dd").split("-");
   var y = +ymd[0], mo = +ymd[1], da = +ymd[2];
   var dow = new Date(Date.UTC(y, mo - 1, da, 12)).getUTCDay(); // 0=일 .. 6=토
-  var since = (dow - 3 + 7) % 7;                               // 수요일(3)로부터 지난 날 수
-  var wed = new Date(Date.UTC(y, mo - 1, da - since, 12));
-  return Utilities.formatDate(wed, "Asia/Seoul", "yyyy-MM-dd");
+  var since = (dow - 2 + 7) % 7;                               // 화요일(2)로부터 지난 날 수
+  var tue = new Date(Date.UTC(y, mo - 1, da - since, 12));
+  return Utilities.formatDate(tue, "Asia/Seoul", "yyyy-MM-dd");
 }
 function parseTs_(v) {
   if (v instanceof Date) return isNaN(v.getTime()) ? null : v;

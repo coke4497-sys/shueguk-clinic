@@ -186,7 +186,7 @@
   function weekLabel(key){ var p=key.split('-'); var tue=new Date(+p[0],+p[1]-1,+p[2]); var wed=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()+1); var sun=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()+5); var f=function(x){return (x.getMonth()+1)+'/'+x.getDate();}; return f(wed)+'~'+f(sun); }
 
   /* ===== 잠금 ===== */
-  (function(){ try{ if(localStorage.getItem(LOCK_KEY)==='1'){ unlock(); } }catch(e){} })();
+  (function(){ unlock(); })();   // 비밀번호 게이트 제거(2026-08-14) — 바로 열림
   function unlock(){ document.body.classList.remove('locked'); init(); }
   function checkLock(){
     var v=document.getElementById('lockInput').value, ok=false;

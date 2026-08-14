@@ -204,7 +204,7 @@
 </style>
 </head>
 <body>
-<div class="gate" id="gate">
+<div class="gate" id="gate" style="display:none;">
   <div class="gate-card">
     <div class="brand">이수경국어 <span class="en">SHUEGUK</span></div>
     <h1>교사용 · 클리닉 신청 현황</h1>
@@ -341,7 +341,7 @@
   let allRows = [];
   let view = "req"; // "req" | "stu"
   let authed = false;
-  let teacherPw = "";
+  let teacherPw = "sh";   // 게이트 제거(2026-08-14) — 백엔드 검증용으로 내장
   let clinicOpen = true; // 신청 받기 ON/OFF 상태
   let allSlotsList = []; // 선택 가능한 전체 시간대(마스터 목록)
   let weekInitialized = false;
@@ -610,7 +610,9 @@
   $("enter").addEventListener("click", submitPw);
   $("pw").addEventListener("keydown", e => { if (e.key === "Enter") submitPw(); });
 
-  $("pw").focus();
+  // 비밀번호 게이트 제거 — 바로 데이터 로드 (실패 시에만 게이트 표시)
+  enterApp();
+  fetchData();
 </script>
 </body>
 </html>

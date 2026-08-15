@@ -328,6 +328,8 @@
     }).catch(function(){ btn.disabled=false; btn.textContent=lb; setAssignStatus('배정 실패 — 인터넷 확인', 'err'); });
   }
 
+  var ASSIGN_ROW = {};   // rowIndex → {tool, item} — 삭제할 때 그 행이 맞는지 백엔드가 확인하는 용도
+
   function loadAssignList(){
     var box = document.getElementById('assignList');
     box.innerHTML='<p class="muted">배정 내역 불러오는 중…</p>';
@@ -335,7 +337,9 @@
       .then(function(d){
         if(!d || d.result!=='success'){ box.innerHTML='<p class="muted">배정 내역을 불러오지 못했어요.</p>'; return; }
         if(!d.assignments.length){ box.innerHTML='<p class="muted">아직 배정된 클리닉 대상이 없어요.</p>'; return; }
+        ASSIGN_ROW = {};
         box.innerHTML = '<div class="grp-title">클리닉 배정 내역</div>' + d.assignments.map(function(a){
+          ASSIGN_ROW[a.rowIndex] = { tool:a.tool||'', item:a.item||'' };
           var tgt = (a.type==='전체') ? '전 학년' : prettyTarget(a.target||'—');
           return '<div class="a-item">' +
             '<span class="a-tag">'+esc(a.type||'전체')+'</span>' +
@@ -348,8 +352,9 @@
   }
   function delAssign(rowIndex){
     if(!confirm('이 배정을 삭제할까요?')) return;
+    var k = ASSIGN_ROW[rowIndex] || {};
     fetch(REPORT_API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ action:'deleteAssignment', pw:SERVER_PW, rowIndex:rowIndex }) })
+      body: JSON.stringify({ action:'deleteAssignment', pw:SERVER_PW, rowIndex:rowIndex, tool:k.tool||'', item:k.item||'' }) })
       .then(function(r){ return r.json(); }).then(function(res){
         if(res.result==='success'){ loadAssignList(); } else { alert('삭제 실패: '+(res.message||'오류')); }
       }).catch(function(){ alert('삭제 실패 — 인터넷 확인'); });

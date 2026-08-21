@@ -89,16 +89,13 @@
   .clinic-btn .cnt{color:var(--ink-soft);font-size:.8rem;margin-left:6px;}
   .clinic-btn.on{border-color:var(--accent);background:rgba(47,110,90,.08);color:var(--accent-dark,var(--accent));}
   .clinic-btn.on b, .clinic-btn.on .cnt{color:inherit;}
-  /* 클리어(완료) — 실제 등원해 클리닉을 진행한 신청 표시 */
-  .clr-btn{font:inherit;font-size:.76rem;font-weight:700;border:1.5px solid var(--line);background:#fff;
-    color:var(--accent);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap;}
-  .clr-btn:hover{border-color:var(--accent);}
-  .clr-btn.undo{color:var(--ink-soft);}
-  .done-mark{font-size:.74rem;font-weight:700;color:#1b8a3a;background:rgba(27,138,58,.12);
-    padding:2px 9px;border-radius:12px;white-space:nowrap;}
+  /* 완료/미완료 토글 — 실제 등원해 클리닉을 진행한 신청 표시. 기본 미완료, 누르면 완료 */
+  .st-toggle{font:inherit;font-size:.76rem;font-weight:700;border:1.5px solid rgba(176,125,43,.4);
+    background:rgba(176,125,43,.12);color:#9a5b2b;border-radius:14px;padding:3px 12px;cursor:pointer;white-space:nowrap;}
+  .st-toggle.done{border-color:rgba(27,138,58,.35);background:rgba(27,138,58,.12);color:#1b8a3a;}
   tr.done-row td{opacity:.5;}
   tr.done-row td.clr-cell{opacity:1;}
-  .clr-cell{white-space:nowrap;} .clr-cell .done-mark{margin-right:6px;}
+  .clr-cell{white-space:nowrap;}
   .stu.done .stu-req, .stu.done .stu-memo{opacity:.5;}
   .weekbar select{flex:none;min-width:150px;font:inherit;font-size:.95rem;font-weight:600;color:var(--accent-dark);
     background:#fff;border:1px solid var(--line-strong);border-radius:10px;padding:10px 30px 10px 12px;
@@ -133,7 +130,7 @@
     box-shadow:var(--shadow);overflow:hidden;}
   .tbl-scroll{overflow-x:auto;}
   table{width:100%;border-collapse:collapse;font-size:.86rem;}
-  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th,td{text-align:left;padding:10px 9px;border-bottom:1px solid var(--line);vertical-align:top;}
   th{font-size:.76rem;font-weight:700;color:var(--ink-soft);white-space:nowrap;background:#FCFBF8;}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr:hover{background:#FCFBF8;}
@@ -141,8 +138,8 @@
   td.who .nm{font-weight:600;}
   td.who .meta{font-size:.74rem;color:var(--ink-soft);}
   td.when{white-space:nowrap;color:var(--ink-soft);font-size:.78rem;}
-  td.content{min-width:200px;white-space:pre-wrap;}
-  td.memo{color:var(--ink-soft);font-size:.8rem;min-width:120px;white-space:pre-wrap;}
+  td.content{min-width:150px;white-space:pre-wrap;}
+  td.memo{color:var(--ink-soft);font-size:.8rem;min-width:90px;white-space:pre-wrap;}
   .tag{display:inline-block;font-size:.74rem;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;}
   .tag.add{background:rgba(47,110,90,.12);color:var(--c-add);}
   .tag.q{background:rgba(62,120,178,.12);color:var(--c-q);}
@@ -594,7 +591,7 @@
         <td class="area-cell">${esc(r["영역"])}</td>
         <td class="content">${esc(r["구체내용"])}</td>
         <td class="memo">${esc(r["메모"])}</td>
-        <td class="clr-cell">${done?`<span class="done-mark" title="${esc(r["클리어"])}">완료</span>`:""}${r._row?`<button type="button" class="clr-btn${done?' undo':''}" data-rows="[${r._row}]" data-clear="${done?'':'1'}" onclick="clearRows(this)">${done?'취소':'클리어'}</button>`:""}</td>
+        <td class="clr-cell">${r._row?`<button type="button" class="st-toggle${done?' done':''}" title="${done?esc(r["클리어"])+' 완료 — 누르면 미완료로':'누르면 완료 처리'}" data-rows="[${r._row}]" data-clear="${done?'':'1'}" onclick="clearRows(this)">${done?'완료':'미완료'}</button>`:""}</td>
       </tr>`;
     }).join("");
     $("list").innerHTML = `<div class="table-card"><div class="tbl-scroll"><table>
@@ -625,8 +622,7 @@
           <span class="slot">${esc(r0["클리닉시간"])}</span>
           <span class="meta">${esc(r0["학교"])} · ${esc(r0["전화뒤4"])}</span>
           <span class="n">요청 ${reqs.length}건</span>
-          ${doneAll?'<span class="done-mark">완료</span>':''}
-          ${rowIds.length?`<button type="button" class="clr-btn${doneAll?' undo':''}" data-rows="[${rowIds.join(',')}]" data-clear="${doneAll?'':'1'}" onclick="clearRows(this)">${doneAll?'취소':'클리어'}</button>`:''}
+          ${rowIds.length?`<button type="button" class="st-toggle${doneAll?' done':''}" title="${doneAll?'누르면 미완료로':'누르면 완료 처리'}" data-rows="[${rowIds.join(',')}]" data-clear="${doneAll?'':'1'}" onclick="clearRows(this)">${doneAll?'완료':'미완료'}</button>`:''}
         </div>
         ${items}
         ${memo ? `<div class="stu-memo">메모: ${esc(memo)}</div>` : ""}

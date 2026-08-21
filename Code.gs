@@ -145,11 +145,10 @@ function gradeKey_(s) {
 }
 // 대상에서 학년 토큰 목록('중2','고3' 형태)을 뽑는다 (신청 폼 학년 선택지용).
 //  학년 대상 → ["중2","고3"] / 전체·개인·일부 → null (학년으로 막지 않음)
-function targetGradeTokens_() {
-  var t = getTarget_();
-  if (!t.type || t.type.indexOf("학년") < 0) return null;
+function gradeTokensOf_(sel) {
+  if (!sel || !sel.type || sel.type.indexOf("학년") < 0) return null;
   var out = {};
-  String(t.target || "").split(/\s*[,\n]\s*/).forEach(function (tok) {
+  String(sel.target || "").split(/\s*[,\n]\s*/).forEach(function (tok) {
     if (!tok.trim()) return;
     var k = gradeKey_(tok);
     if (k.d === "1" || k.d === "2" || k.d === "3") out[(k.lv || "고") + k.d] = true;
@@ -157,6 +156,7 @@ function targetGradeTokens_() {
   var arr = Object.keys(out).sort();
   return arr.length ? arr : null;
 }
+function targetGradeTokens_() { return gradeTokensOf_(getTarget_()); }
 // (구버전 학생 폼 호환) 고등 학년 숫자 목록만 — ["1","3"] 형태
 function targetGrades_() {
   var toks = targetGradeTokens_();
@@ -226,8 +226,10 @@ function schoolLoose_(a, b) {
 var TSLOTS_KEY = "teacherSlots";
 function cleanTeacherSlots_(arr) {
   return (Array.isArray(arr) ? arr : []).map(function (t) {
+    var tg = (t && t.target && typeof t.target === "object" && t.target.type) ? t.target : null;
     return { teacher: String((t && t.teacher) || "").trim(),
              open: !(t && t.open === false),
+             target: tg ? { type: String(tg.type || "").slice(0, 20), target: String(tg.target || "").slice(0, 4000) } : null,
              slots: (t && Array.isArray(t.slots) ? t.slots : [])
                       .map(function (s) { return String(s || "").trim().slice(0, 60); }).filter(String) };
   }).filter(function (t) { return t.teacher; }).slice(0, 40);
@@ -246,6 +248,12 @@ function teacherEntry_(list, teacher) {
   var nm = String(teacher || "").trim();
   for (var i = 0; i < list.length; i++) if (list[i].teacher === nm) return list[i];
   return null;
+}
+// 이 강사 클리닉의 신청 대상 — 강사별 대상이 설정돼 있으면 그것, 아니면 공통(옛) 대상
+function effectiveTarget_(teacher) {
+  var e = teacherEntry_(getTeacherSlots_(), teacher);
+  if (e && e.target && e.target.type) return e.target;
+  return getTarget_();
 }
 
 // 정원 계산에서 제외할 학생 — 다른 주 클리닉인데 같은 신청 주차 묶음에 들어온 경우.
@@ -313,12 +321,11 @@ function handleSubmit_(data) {
     }
 
     // 신청 대상(전체/학년/개인/일부)에 해당하지 않으면 제출을 막습니다.
-    // ※ 학년 제한도 대상 설정 하나로 통합 — 예전 '신청 가능 학년' 검사는 폐지
-    //   (대상 미설정 시 getTarget_이 예전 학년 설정을 기본값으로 이어받음)
-    var tgt = getTarget_();
+    // ※ 강사별 대상이 설정된 강사는 그 대상, 아니면 공통(옛) 대상으로 판정.
+    var tgt = effectiveTarget_(data.teacher);
     if (!eligibleForTarget_(tgt, data)) {
       return tgt.type.indexOf("학년") >= 0
-        ? { result: "grade_closed", grades: targetGrades_() || [] }   // 학년 대상 → 기존 안내문 재사용
+        ? { result: "grade_closed", grades: gradeTokensOf_(tgt) || [] }   // 학년 대상 → 기존 안내문 재사용
         : { result: "not_target" };
     }
     var gk = gradeKey_(data.grade);
@@ -482,10 +489,14 @@ function doGet(e) {
   // targetType: 신청 대상 유형만 공개 (명단은 비공개 — 학생 페이지 카드 게이팅용)
   if (params.action === "slots") {
     // grades: (구버전 호환) 고등 학년 숫자 목록 / gradeTokens: '중2','고3' 형태 (전체·개인·일부 → null)
-    // teachers: 강사별 시간대 설정 / tcounts: 강사별 시간대 정원
+    // teachers: 강사별 설정(시간대·신청받기·대상 + 그 대상의 gradeTokens) / tcounts: 강사별 시간대 정원
     var sc = slotCounts_();
+    var tlist = getTeacherSlots_().map(function (t) {
+      return { teacher: t.teacher, open: t.open, slots: t.slots, target: t.target,
+               gradeTokens: gradeTokensOf_((t.target && t.target.type) ? t.target : getTarget_()) };
+    });
     return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: sc.counts, tcounts: sc.tcounts,
-      open: isOpen_(), slots: getActiveSlots_(), teachers: getTeacherSlots_(),
+      open: isOpen_(), slots: getActiveSlots_(), teachers: tlist,
       grades: targetGrades_(), gradeTokens: targetGradeTokens_(), targetType: getTarget_().type });
   }
 
@@ -514,7 +525,8 @@ function doGet(e) {
     return reply_(params.callback, { result: "success", allSlots: savedMaster, slots: savedActive });
   }
 
-  // 신청 대상 저장 (교사 전용) — ?action=setTarget&sel={"type","target"}&pw=
+  // 신청 대상 저장 (교사 전용) — ?action=setTarget&sel={"type","target"}&pw=[&teacher=]
+  // teacher를 주면 그 강사 클리닉의 대상으로 저장(강사별), 없으면 공통(옛) 대상.
   if (params.action === "setTarget") {
     if (params.pw !== TEACHER_PASSWORD) {
       return reply_(params.callback, { result: "error", message: "unauthorized" });
@@ -523,6 +535,15 @@ function doGet(e) {
     try { tsel = params.sel ? JSON.parse(params.sel) : null; } catch (e) { tsel = null; }
     if (!tsel || !tsel.type) {
       return reply_(params.callback, { result: "error", message: "invalid_target" });
+    }
+    var tNm = String(params.teacher || "").trim();
+    if (tNm) {
+      var tl = getTeacherSlots_();
+      var ent = teacherEntry_(tl, tNm);
+      if (!ent) { ent = { teacher: tNm, open: true, target: null, slots: [] }; tl.push(ent); }
+      ent.target = { type: String(tsel.type).slice(0, 20), target: String(tsel.target || "").slice(0, 4000) };
+      var savedTl = setTeacherSlots_(tl);
+      return reply_(params.callback, { result: "success", teacher: tNm, target: ent.target, teachers: savedTl });
     }
     return reply_(params.callback, { result: "success", target: setTarget_(tsel) });
   }
@@ -552,7 +573,8 @@ function doGet(e) {
   // 학생 개별 페이지: 이 학생이 현재 신청 대상인지 (개인정보 없이 true/false만)
   // ?action=amITarget&name=&school=&grade=&callback=
   if (params.action === "amITarget") {
-    var tt = getTarget_();
+    // teacher를 주면 그 강사 클리닉의 대상으로 판정 (강사별 대상 미설정이면 공통 대상)
+    var tt = effectiveTarget_(params.teacher);
     var ok = eligibleForTarget_(tt, { name: params.name, school: params.school, grade: params.grade });
     return reply_(params.callback, { result: "success", eligible: ok, targetType: tt.type, open: isOpen_() });
   }

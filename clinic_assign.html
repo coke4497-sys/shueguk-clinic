@@ -123,14 +123,15 @@
     <p class="intro">선택한 학생을 클리닉 대상으로 배정하고, 신청/미신청을 확인합니다.</p>
   </header>
 
-  <!-- 강사별 시간대 · 신청받기 -->
+  <!-- 강사 클리닉 선택 + 시간대 · 신청받기 -->
   <section class="card">
-    <h2><span class="dot"></span>강사별 시간대 · 신청받기</h2>
-    <p class="sub">강사를 골라 클리닉 시간대를 넣어두면, 학생 신청 폼에서 <b>그 강사를 담당으로 고른 학생에게는 그 시간대만</b> 보이고 정원(9명)도 강사별로 따로 셉니다.<br>
-      신청받기 중단도 강사별로 할 수 있어요. <b>시간대가 설정되지 않은 강사의 학생은 신청할 수 없습니다.</b></p>
+    <h2><span class="dot"></span>강사 클리닉 — 시간대 · 신청받기</h2>
+    <p class="sub"><b>강사를 고르면 이 페이지 전체(시간대·신청받기·학생 배정·신청 대상·신청 현황)가 그 강사 클리닉 기준으로 보입니다.</b><br>
+      학생 신청 폼에서도 그 강사를 담당으로 고른 학생에게 그 시간대만 보이고, 정원(9명)도 강사별로 따로 셉니다.
+      시간대가 설정되지 않은 강사의 학생은 신청할 수 없어요.</p>
     <div class="wk-note" id="tslotSummary">확인 중…</div>
     <label for="tslotTeacher">강사 선택</label>
-    <select id="tslotTeacher" onchange="renderTslot()"><option value="">선택</option></select>
+    <select id="tslotTeacher" onchange="pageTeacherChanged()"><option value="">선택</option></select>
     <button type="button" class="submit" id="tslotOpenBtn" onclick="tslotToggleOpen()" style="background:#5a8275;display:none;"></button>
     <div class="slot-list" id="tslotList" style="margin-top:12px;"><p class="muted">강사를 선택하세요.</p></div>
     <div class="slot-addrow">
@@ -144,8 +145,8 @@
   <!-- 배정 -->
   <section class="card">
     <h2><span class="dot"></span>학생 배정 · 신청 대상</h2>
-    <p class="sub">클리닉에 와야 할 학생을 선택하세요. (전 학년 / 학년 / 개인 / 일부)<br>
-      배정을 저장하면 <b>그 학생들만</b> 신청할 수 있고, 학생 개인 페이지에도 그 학생들에게만 클리닉 카드가 열립니다.</p>
+    <p class="sub">위에서 고른 <b>강사의 클리닉</b>에 와야 할 학생을 선택하세요. (전 학년 / 학년 / 개인 / 일부)<br>
+      배정을 저장하면 <b>그 학생들만 그 강사 클리닉에</b> 신청할 수 있고, 학생 개인 페이지에도 그 학생들에게만 클리닉 카드가 열립니다.</p>
     <div class="wk-note" id="targetCur">현재 신청 대상: 확인 중…</div>
     <div id="picker"></div>
     <label for="memo">비고 <span style="font-weight:400;color:#9aa6a0">(선택 · 예: 6/26주차)</span></label>
@@ -218,21 +219,44 @@
     loadClinicSettings();
   }
 
-  /* ===== 신청 설정 (강사별 시간대·신청받기 · 현재 대상) — 클리닉 백엔드 ===== */
+  /* ===== 신청 설정 (강사별 시간대·신청받기·대상) — 클리닉 백엔드 ===== */
+  var GLOBAL_TARGET = null;   // 공통(옛) 대상 — 강사별 대상이 없는 강사에게 적용
   function loadClinicSettings(){
     fetchJSON(CLINIC_API+'?action=data&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
       .then(function(d){
         if(!d || d.result!=='success'){ document.getElementById('tslotSummary').textContent='설정을 불러오지 못했어요. (클리닉 백엔드 재배포 확인)'; return; }
         tslots = (d.teachers||[]).slice();
+        GLOBAL_TARGET = d.target||null;
         renderTslotSelect(); renderTslot(); renderTslotSummary();
-        renderTargetCur(d.target||null);
+        renderTargetCurBox();
       }).catch(function(){ document.getElementById('tslotSummary').textContent='설정을 불러오지 못했어요 — 인터넷 확인'; });
   }
-  function renderTargetCur(t){
+  /* 페이지 전체 기준 강사 — 강사를 바꾸면 시간대·대상·배정 내역·현황이 함께 바뀐다 */
+  function masterTeacher(){ return document.getElementById('tslotTeacher').value; }
+  function pageTeacherChanged(){
+    renderTslot();
+    renderTargetCurBox();
+    renderAssignListBox();
+    renderStatusBody();
+  }
+  function targetLabel(t){
+    if(!t || !t.type) return '';
+    return (t.type.indexOf('전체')>=0) ? '<b>전 학년 (모든 학생)</b>'
+         : '<b>'+esc(t.type)+'</b> — '+esc(prettyTarget(t.target)||'—');
+  }
+  function renderTargetCurBox(){
     var el=document.getElementById('targetCur');
-    if(!t){ el.textContent='현재 신청 대상: (클리닉 백엔드 재배포 후 표시됩니다)'; return; }
-    if(!t.type || t.type.indexOf('전체')>=0) el.innerHTML='현재 신청 대상: <b>전 학년 (모든 학생)</b>';
-    else el.innerHTML='현재 신청 대상: <b>'+esc(t.type)+'</b> — '+esc(prettyTarget(t.target)||'—');
+    var nm=masterTeacher();
+    if(!nm){
+      el.innerHTML='위에서 <b>강사를 먼저 선택</b>하면 그 강사 클리닉의 신청 대상이 보이고, 배정도 그 강사 클리닉으로 저장됩니다.'
+        +(GLOBAL_TARGET&&GLOBAL_TARGET.type?'<br><span style="color:#9aa6a0">공통(강사별 대상 미설정 시) 대상: </span>'+targetLabel(GLOBAL_TARGET):'');
+      return;
+    }
+    var t=tslotOf(nm);
+    var tg=(t&&t.target&&t.target.type)?t.target:null;
+    if(tg) el.innerHTML=esc(nm)+'T 클리닉 신청 대상: '+targetLabel(tg);
+    else el.innerHTML=esc(nm)+'T 클리닉 신청 대상: <b>아직 설정 안 됨</b>'
+      +(GLOBAL_TARGET&&GLOBAL_TARGET.type?' — 지금은 공통 대상('+targetLabel(GLOBAL_TARGET)+')이 적용돼요. 아래에서 배정하면 이 강사 대상으로 저장됩니다.':' — 아래에서 학생을 배정하면 설정됩니다.');
   }
   function fetchJSON(url){ return fetch(url, {cache:'no-store'}).then(function(r){ return r.json(); }); }
 
@@ -326,13 +350,15 @@
   /* ===== 배정 ===== */
   function setAssignStatus(m,k){ var s=document.getElementById('assignStatus'); s.textContent=m||''; s.className='status'+(k?(' '+k):''); }
   function saveAssign(){
+    var tNm = masterTeacher();
+    if(!tNm){ setAssignStatus('먼저 맨 위에서 강사를 선택해 주세요 — 배정은 강사 클리닉 단위로 저장돼요.', 'err'); return; }
     var sel = currentSel || (picker && picker.getSelection());
     if(!sel){ setAssignStatus('대상을 먼저 선택해 주세요.', 'err'); return; }
     var btn=document.getElementById('assignBtn'); btn.disabled=true; var lb=btn.textContent; btn.textContent='배정 중…';
-    setAssignStatus('배정하는 중…');
+    setAssignStatus(tNm+'T 클리닉으로 배정하는 중…');
     fetch(REPORT_API, {
       method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ action:'addAssignment', pw:SERVER_PW, tool:TOOL, item:'', type:sel.type, target:sel.target, memo:document.getElementById('memo').value.trim() })
+      body: JSON.stringify({ action:'addAssignment', pw:SERVER_PW, tool:TOOL, item:tNm, type:sel.type, target:sel.target, memo:document.getElementById('memo').value.trim() })
     }).then(function(r){ return r.json(); }).then(function(res){
       btn.disabled=false; btn.textContent=lb;
       if(res.result==='success'){
@@ -340,11 +366,16 @@
         if(picker) picker.reset();
         document.getElementById('memo').value='';
         loadAssignList();
-        // 같은 선택을 클리닉 백엔드 '신청 대상'으로도 저장 → 이 학생들만 신청 가능 + 개인 페이지 카드 표시
-        fetchJSON(CLINIC_API+'?action=setTarget&sel='+encodeURIComponent(JSON.stringify({ type:sel.type, target:sel.target }))
+        // 같은 선택을 이 강사 클리닉의 '신청 대상'으로 저장 → 이 학생들만 신청 가능 + 개인 페이지 카드 표시
+        fetchJSON(CLINIC_API+'?action=setTarget&teacher='+encodeURIComponent(tNm)
+          +'&sel='+encodeURIComponent(JSON.stringify({ type:sel.type, target:sel.target }))
           +'&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
           .then(function(t){
-            if(t && t.result==='success'){ renderTargetCur(t.target); setAssignStatus('✓ 배정 + 신청 대상 설정 완료 — '+sel.summary, 'ok'); }
+            if(t && t.result==='success'){
+              if(t.teachers) tslots=(t.teachers||tslots).slice();
+              renderTslotSelect(); renderTslotSummary(); renderTargetCurBox();
+              setAssignStatus('✓ '+tNm+'T 클리닉 배정 + 신청 대상 설정 완료 — '+sel.summary, 'ok');
+            }
             else setAssignStatus('✓ 배정은 됐지만 신청 대상 설정에 실패했어요 — 클리닉 백엔드 재배포를 확인해 주세요.', 'err');
           })
           .catch(function(){ setAssignStatus('✓ 배정은 됐지만 신청 대상 설정에 실패했어요 — 인터넷 확인', 'err'); });
@@ -353,6 +384,10 @@
   }
 
   var ASSIGN_ROW = {};   // rowIndex → {tool, item} — 삭제할 때 그 행이 맞는지 백엔드가 확인하는 용도
+  var ASSIGNS = [];      // 클리닉 배정 내역 전체 (item 열 = 강사)
+  // item(강사)이 비어 있는 옛 배정 기록은 전부 이수경T의 클리닉 (2026-08-21 사용자 확인)
+  var LEGACY_ASSIGN_TEACHER = '이수경';
+  function assignTeacherOf(a){ return String(a.item||'').trim() || LEGACY_ASSIGN_TEACHER; }
 
   function loadAssignList(){
     var box = document.getElementById('assignList');
@@ -360,19 +395,26 @@
     fetchJSON(REPORT_API+'?action=assignList&pw='+encodeURIComponent(SERVER_PW)+'&tool='+encodeURIComponent(TOOL)+'&t='+Date.now())
       .then(function(d){
         if(!d || d.result!=='success'){ box.innerHTML='<p class="muted">배정 내역을 불러오지 못했어요.</p>'; return; }
-        if(!d.assignments.length){ box.innerHTML='<p class="muted">아직 배정된 클리닉 대상이 없어요.</p>'; return; }
-        ASSIGN_ROW = {};
-        box.innerHTML = '<div class="grp-title">클리닉 배정 내역</div>' + d.assignments.map(function(a){
-          ASSIGN_ROW[a.rowIndex] = { tool:a.tool||'', item:a.item||'' };
-          var tgt = (a.type==='전체') ? '전 학년' : prettyTarget(a.target||'—');
-          return '<div class="a-item">' +
-            '<span class="a-tag">'+esc(a.type||'전체')+'</span>' +
-            '<span class="a-target">'+esc(tgt)+(a.memo?(' · '+esc(a.memo)):'')+'</span>' +
-            '<span class="a-date">'+esc(a.date||'')+'</span>' +
-            '<button type="button" class="a-del" onclick="delAssign('+a.rowIndex+')">삭제</button>' +
-          '</div>';
-        }).join('');
+        ASSIGNS = d.assignments||[];
+        renderAssignListBox();
       }).catch(function(){ box.innerHTML='<p class="muted">배정 내역을 불러오지 못했어요.</p>'; });
+  }
+  function renderAssignListBox(){
+    var box = document.getElementById('assignList');
+    var nm = masterTeacher();
+    var list = ASSIGNS.filter(function(a){ return !nm || assignTeacherOf(a)===nm; });
+    if(!list.length){ box.innerHTML='<p class="muted">'+(nm?esc(nm)+'T 클리닉의 배정 내역이 없어요.':'아직 배정된 클리닉 대상이 없어요.')+'</p>'; return; }
+    ASSIGN_ROW = {};
+    box.innerHTML = '<div class="grp-title">'+(nm?esc(nm)+'T ':'')+'클리닉 배정 내역</div>' + list.map(function(a){
+      ASSIGN_ROW[a.rowIndex] = { tool:a.tool||'', item:a.item||'' };
+      var tgt = (a.type==='전체') ? '전 학년' : prettyTarget(a.target||'—');
+      return '<div class="a-item">' +
+        '<span class="a-tag">'+esc(assignTeacherOf(a))+'T · '+esc(a.type||'전체')+'</span>' +
+        '<span class="a-target">'+esc(tgt)+(a.memo?(' · '+esc(a.memo)):'')+'</span>' +
+        '<span class="a-date">'+esc(a.date||'')+'</span>' +
+        '<button type="button" class="a-del" onclick="delAssign('+a.rowIndex+')">삭제</button>' +
+      '</div>';
+    }).join('');
   }
   function delAssign(rowIndex){
     if(!confirm('이 배정을 삭제할까요?')) return;
@@ -422,67 +464,83 @@
       var aRes=res[0], sRes=res[1], rRes=res[2];
       if(rRes && rRes.result==='success') ROSTER=rRes.students||ROSTER;
       if(!aRes || aRes.result!=='success'){ body.innerHTML='<p class="muted">배정 내역을 불러오지 못했어요.</p>'; return; }
-      if(!aRes.assignments.length){ body.innerHTML='<div class="gate-note">아직 클리닉 배정이 없어요. 위에서 먼저 학생을 배정해 주세요.</div>'; return; }
       if(!sRes || sRes.result!=='success'){ body.innerHTML='<p class="muted">클리닉 신청 기록을 불러오지 못했어요. (권한/배포 확인)</p>'; return; }
-
-      var curWeek = weekKeyOf(new Date());
-      // 이번 주 신청: 학생별(name|school 느슨) 슬롯 모음
-      // 주차는 제출일이 아니라 실제 클리닉 날짜(시간대 요일 기준, 제출일 이후 가장 가까운
-      // 그 요일)로 판단 — 일요일에 '금' 시간대를 신청하면 다음 주차로 분류
-      var DOW_KO='일월화수목금토';
-      function meetTs(r){
-        var ts=parseTs(r['제출시각']); if(!ts) return null;
-        var wd=DOW_KO.indexOf(String(r['클리닉시간']||'').trim().charAt(0));
-        if(wd<0) return ts;
-        var ahead=(wd-ts.getDay()+7)%7;
-        return new Date(ts.getFullYear(),ts.getMonth(),ts.getDate()+ahead);
-      }
-      var signByName = {};
-      (sRes.rows||[]).forEach(function(r){
-        var nm=String(r['이름']||'').trim(); if(!nm) return;
-        var mts=meetTs(r); if(!mts || weekKeyOf(mts)!==curWeek) return;
-        var rec = signByName[nm] || (signByName[nm]=[]);
-        rec.push({ school:String(r['학교']||'').trim(), slot:String(r['클리닉시간']||'').trim() });
-      });
-
-      var assigned = expandAssigned(aRes.assignments);
-      var nameCount={}; assigned.forEach(function(a){ nameCount[a.name]=(nameCount[a.name]||0)+1; });
-
-      var done=[], todo=[];
-      assigned.forEach(function(a){
-        var cand = signByName[a.name] || [];
-        var applied=false, ambiguous=false, slot='';
-        if(cand.length){
-          var mine = cand.filter(function(c){ return looseSchool(c.school, a.school); });
-          if(nameCount[a.name] <= 1){ applied=true; }
-          else { applied = mine.length>0; }
-          var use = mine.length?mine:cand;
-          slot = use.map(function(c){ return c.slot; }).filter(Boolean).join(', ');
-          if(nameCount[a.name] > 1){
-            var sameNS = assigned.filter(function(x){ return x.name===a.name && looseSchool(x.school,a.school); }).length;
-            if(sameNS>1) ambiguous=true;
-          }
-        }
-        var rec={ a:a, applied:applied, ambiguous:ambiguous, slot:slot };
-        if(applied) done.push(rec); else todo.push(rec);
-      });
-      var warnCnt = done.concat(todo).filter(function(r){ return r.ambiguous; }).length;
-
-      var html = '<div class="wk-note">이번 주 클리닉 <b>'+weekLabel(curWeek)+'</b> (화요일 오픈 주차) 신청 기준</div>';
-      html += '<div class="stat-row">' +
-        '<div class="stat assigned"><div class="n">'+assigned.length+'</div><div class="l">배정</div></div>' +
-        '<div class="stat done"><div class="n">'+done.length+'</div><div class="l">신청</div></div>' +
-        '<div class="stat todo"><div class="n">'+todo.length+'</div><div class="l">미신청</div></div>' +
-      '</div>';
-      if(warnCnt>0){ html += '<div class="warn-box">⚠️ 동명+동학교가 배정에 '+warnCnt+'명 있어 자동 구분이 어렵습니다. 학생ID로 직접 확인이 필요해요.</div>'; }
-
-      html += '<div class="grp-title">미신청 ('+todo.length+'명)</div>';
-      html += todo.length ? ('<div class="chips">'+todo.map(function(r){ return chip(r,'todo'); }).join('')+'</div>') : '<p class="muted">미신청 학생이 없어요. 👏</p>';
-      html += '<div class="grp-title">신청 ('+done.length+'명)</div>';
-      html += done.length ? ('<div class="chips">'+done.map(function(r){ return chip(r,'done'); }).join('')+'</div>') : '<p class="muted">아직 신청한 학생이 없어요.</p>';
-
-      body.innerHTML = html;
+      ASSIGNS = aRes.assignments||[];
+      STAT = { curWeek: weekKeyOf(new Date()), rows: sRes.rows||[] };
+      renderStatusBody();
     }).catch(function(){ body.innerHTML='<p class="muted">현황을 불러오지 못했어요. 인터넷을 확인해 주세요.</p>'; });
+  }
+
+  /* 현황 그리기 — 위에서 고른 강사 클리닉 기준 (미선택 = 전체) */
+  var STAT = null;
+  // 신청이 향하는 실제 클리닉 날짜 (시간대 요일 기준, 제출일 이후 가장 가까운 그 요일)
+  var DOW_KO='일월화수목금토';
+  function meetTs(r){
+    var ts=parseTs(r['제출시각']); if(!ts) return null;
+    var wd=DOW_KO.indexOf(String(r['클리닉시간']||'').trim().charAt(0));
+    if(wd<0) return ts;
+    var ahead=(wd-ts.getDay()+7)%7;
+    return new Date(ts.getFullYear(),ts.getMonth(),ts.getDate()+ahead);
+  }
+  function renderStatusBody(){
+    if(!STAT) return;
+    var body=document.getElementById('statusBody');
+    var nm=masterTeacher();
+    var curWeek=STAT.curWeek;
+    // 이 강사 클리닉의 배정만 (미선택 = 전체)
+    var asg = ASSIGNS.filter(function(a){ return !nm || assignTeacherOf(a)===nm; });
+    if(!asg.length){
+      body.innerHTML='<div class="gate-note">'+(nm?esc(nm)+'T 클리닉의 배정이 없어요. 위에서 먼저 학생을 배정해 주세요.':'아직 클리닉 배정이 없어요. 위에서 먼저 학생을 배정해 주세요.')+'</div>';
+      return;
+    }
+    // 이번 주 신청 — 이 강사 클리닉으로 낸 신청만 (미선택 = 전체, 옛 기록의 빈 담당강사는 이수경T)
+    var signByName = {};
+    STAT.rows.forEach(function(r){
+      var snm=String(r['이름']||'').trim(); if(!snm) return;
+      var rowT=String(r['담당강사']||'').trim()||LEGACY_ASSIGN_TEACHER;
+      if(nm && rowT!==nm) return;
+      var mts=meetTs(r); if(!mts || weekKeyOf(mts)!==curWeek) return;
+      var rec = signByName[snm] || (signByName[snm]=[]);
+      rec.push({ school:String(r['학교']||'').trim(), slot:String(r['클리닉시간']||'').trim() });
+    });
+
+    var assigned = expandAssigned(asg);
+    var nameCount={}; assigned.forEach(function(a){ nameCount[a.name]=(nameCount[a.name]||0)+1; });
+
+    var done=[], todo=[];
+    assigned.forEach(function(a){
+      var cand = signByName[a.name] || [];
+      var applied=false, ambiguous=false, slot='';
+      if(cand.length){
+        var mine = cand.filter(function(c){ return looseSchool(c.school, a.school); });
+        if(nameCount[a.name] <= 1){ applied=true; }
+        else { applied = mine.length>0; }
+        var use = mine.length?mine:cand;
+        slot = use.map(function(c){ return c.slot; }).filter(Boolean).join(', ');
+        if(nameCount[a.name] > 1){
+          var sameNS = assigned.filter(function(x){ return x.name===a.name && looseSchool(x.school,a.school); }).length;
+          if(sameNS>1) ambiguous=true;
+        }
+      }
+      var rec={ a:a, applied:applied, ambiguous:ambiguous, slot:slot };
+      if(applied) done.push(rec); else todo.push(rec);
+    });
+    var warnCnt = done.concat(todo).filter(function(r){ return r.ambiguous; }).length;
+
+    var html = '<div class="wk-note">'+(nm?'<b>'+esc(nm)+'T 클리닉</b> · ':'<b>전체 강사</b> · ')+'이번 주 <b>'+weekLabel(curWeek)+'</b> (화요일 오픈 주차) 신청 기준</div>';
+    html += '<div class="stat-row">' +
+      '<div class="stat assigned"><div class="n">'+assigned.length+'</div><div class="l">배정</div></div>' +
+      '<div class="stat done"><div class="n">'+done.length+'</div><div class="l">신청</div></div>' +
+      '<div class="stat todo"><div class="n">'+todo.length+'</div><div class="l">미신청</div></div>' +
+    '</div>';
+    if(warnCnt>0){ html += '<div class="warn-box">⚠️ 동명+동학교가 배정에 '+warnCnt+'명 있어 자동 구분이 어렵습니다. 학생ID로 직접 확인이 필요해요.</div>'; }
+
+    html += '<div class="grp-title">미신청 ('+todo.length+'명)</div>';
+    html += todo.length ? ('<div class="chips">'+todo.map(function(r){ return chip(r,'todo'); }).join('')+'</div>') : '<p class="muted">미신청 학생이 없어요. 👏</p>';
+    html += '<div class="grp-title">신청 ('+done.length+'명)</div>';
+    html += done.length ? ('<div class="chips">'+done.map(function(r){ return chip(r,'done'); }).join('')+'</div>') : '<p class="muted">아직 신청한 학생이 없어요.</p>';
+
+    body.innerHTML = html;
   }
 
   function chip(r, kind){

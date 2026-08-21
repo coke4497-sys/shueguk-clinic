@@ -375,8 +375,9 @@
   let slotCap = 9;
   let slotCounts = {};
   let tcounts = {};          // 강사별 시간대 정원 { '강사|시간대': n }
-  let teacherSlotMap = null; // 강사별 시간대 { 강사: [시간대] } — 설정 없으면 null
-  let globalSlots = [];      // 공통 시간대 (강사별 설정이 없는 강사용)
+  let teacherSlotMap = null; // 강사별 설정 { 강사: {slots, open, gradeTokens} } — 설정 없으면 null
+  let globalSlots = [];      // 공통 시간대 (강사별 설정이 없을 때)
+  let globalGradeTokens = null; // 공통 신청 대상 학년 토큰
 
   // Apps Script 응답을 읽기 위한 JSONP 요청 (마감 여부 확인용)
   function jsonpRequest(params, onResult, onError){
@@ -514,13 +515,15 @@
     var t = document.getElementById("teacher").value.trim();
     return tcounts[t + "|" + slot] || 0;
   }
-  // 담당 강사에 따라 시간대 영역 갱신 — 미설정·신청 중단 강사는 안내 문구 표시
+  // 담당 강사에 따라 시간대·학년 영역 갱신 — 미설정·신청 중단 강사는 안내 문구 표시
   function updateTimeArea(){
     var sel = document.getElementById("clinic-time");
+    var e = teacherEntry();
+    // 학년 선택지 — 이 강사 클리닉의 대상 학년 (강사별 대상 없으면 공통)
+    buildGradeOptions((e && e.gradeTokens) || globalGradeTokens);
     if (teacherSlotMap){
       var t = document.getElementById("teacher").value.trim();
       if (!t){ sel.disabled = false; sel.innerHTML = '<option value="">먼저 담당 강사를 선택해 주세요</option>'; return; }
-      var e = teacherEntry();
       if (!e){ sel.disabled = true; sel.innerHTML = '<option value="">담당 강사님의 클리닉 시간이 아직 준비되지 않았어요</option>'; return; }
       if (e.open === false){ sel.disabled = true; sel.innerHTML = '<option value="">담당 강사님이 지금은 신청을 받지 않아요</option>'; return; }
     }
@@ -561,16 +564,17 @@
     if (slots.includes(cur)) sel.value = cur;
   }
 
-  // 이번 주 신청 가능 학년만 학년 선택지에 남긴다. 한 학년뿐이면 자동 선택.
-  //  '중2'/'고3' 형태 토큰과 옛 숫자('2'=고2) 형식 둘 다 받는다.
+  // 신청 가능 학년만 학년 선택지에 남긴다. 한 학년뿐이면 자동 선택.
+  //  '중2'/'고3' 형태 토큰과 옛 숫자('2'=고2) 형식 둘 다 받는다. 목록이 없으면(전체 대상) 전 학년 표시.
+  var GRADE_ORDER = ['중1','중2','중3','고1','고2','고3'];
   function buildGradeOptions(grades){
     var sel = document.getElementById("grade");
-    if (!sel || !Array.isArray(grades) || !grades.length) return;
-    var order = ['중1','중2','중3','고1','고2','고3'];
-    var toks = grades.map(function(g){ return /^[123]$/.test(String(g)) ? '고'+g : String(g); })
-      .filter(function(g){ return order.indexOf(g) > -1; })
-      .sort(function(a,b){ return order.indexOf(a)-order.indexOf(b); });
-    if (!toks.length) return;
+    if (!sel) return;
+    var toks = (Array.isArray(grades) ? grades : [])
+      .map(function(g){ return /^[123]$/.test(String(g)) ? '고'+g : String(g); })
+      .filter(function(g){ return GRADE_ORDER.indexOf(g) > -1; })
+      .sort(function(a,b){ return GRADE_ORDER.indexOf(a)-GRADE_ORDER.indexOf(b); });
+    if (!toks.length) toks = GRADE_ORDER.slice();   // 제한 없음 → 전 학년
     var cur = sel.value;
     sel.innerHTML = '<option value="">선택</option>'
       + toks.map(function(g){ return '<option value="'+g+'">'+g+'</option>'; }).join("");
@@ -586,16 +590,16 @@
       slotCounts = resp.counts || {};
       tcounts = resp.tcounts || {};
       globalSlots = Array.isArray(resp.slots) ? resp.slots : [];
-      // 강사별 운영 설정 — 있으면 담당 강사에 따라 시간대·신청받기가 바뀐다
+      globalGradeTokens = resp.gradeTokens || resp.grades || null;
+      // 강사별 운영 설정 — 있으면 담당 강사에 따라 시간대·신청받기·대상 학년이 바뀐다
       teacherSlotMap = null;
       if (Array.isArray(resp.teachers) && resp.teachers.length){
         teacherSlotMap = {};
         resp.teachers.forEach(function(t){
-          if (t && t.teacher) teacherSlotMap[t.teacher] = { slots: t.slots || [], open: t.open !== false };
+          if (t && t.teacher) teacherSlotMap[t.teacher] = { slots: t.slots || [], open: t.open !== false, gradeTokens: t.gradeTokens || null };
         });
       }
-      buildGradeOptions(resp.gradeTokens || resp.grades);               // 신청 가능 학년만 표시
-      updateTimeArea();                                                 // 선택된 강사의 시간대로 갱신
+      updateTimeArea();                                                 // 선택된 강사의 시간대·학년으로 갱신
     });
   }
   loadSlots();

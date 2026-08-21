@@ -252,6 +252,7 @@
 
   <div class="controls">
     <input type="text" id="q" placeholder="이름 검색" />
+    <select id="f-teacher"><option value="">전체 강사</option></select>
     <select id="f-time"><option value="">전체 시간</option></select>
     <select id="f-type"><option value="">전체 유형</option></select>
     <select id="f-area"><option value="">전체 영역</option></select>
@@ -413,12 +414,15 @@
   }
 
   function studentKey(r){ return (r["이름"]||"") + "|" + (r["학교"]||"") + "|" + (r["전화뒤4"]||""); }
+  // 담당강사 열이 빈 옛 신청 기록은 전부 이수경T의 클리닉 (2026-08-21 사용자 확인)
+  function rowTeacher(r){ return String(r["담당강사"]||"").trim() || "이수경"; }
 
   function buildFilters(){
     weekList = uniq(allRows.map(r=>rowWeekKey(r))).sort().reverse();
     fillSelectKV("f-week", "전체 주차", weekList.map(w=>({value:w, label:weekLabel(w)})));
     if (!weekInitialized && weekList.length){ $("f-week").value = weekList[0]; weekInitialized = true; }
     const times = uniq(allRows.map(r=>r["클리닉시간"])).sort((a,b)=>slotIndex(a)-slotIndex(b));
+    fillSelect("f-teacher", "전체 강사", uniq(allRows.map(rowTeacher)).sort((a,b)=>a.localeCompare(b,"ko")));
     fillSelect("f-time", "전체 시간", times);
     fillSelect("f-type", "전체 유형", uniq(allRows.map(r=>r["유형"])));
     fillSelect("f-area", "전체 영역", uniq(allRows.map(r=>r["영역"])));
@@ -440,9 +444,11 @@
     const q = $("q").value.trim();
     const fw = $("f-week").value;
     const ft = $("f-type").value, fa = $("f-area").value, fs = $("f-school").value, fm = $("f-time").value;
+    const ftc = $("f-teacher").value;
     return allRows.filter(r =>
       (!q || (r["이름"]||"").includes(q)) &&
       (!fw || rowWeekKey(r) === fw) &&
+      (!ftc || rowTeacher(r) === ftc) &&
       (!fm || r["클리닉시간"] === fm) &&
       (!ft || r["유형"] === ft) &&
       (!fa || r["영역"] === fa) &&
@@ -581,7 +587,7 @@
   }
 
   // 이벤트
-  ["q","f-week","f-time","f-type","f-area","f-school"].forEach(id => $(id).addEventListener("input", render));
+  ["q","f-week","f-teacher","f-time","f-type","f-area","f-school"].forEach(id => $(id).addEventListener("input", render));
   $("week-prev").addEventListener("click", ()=> moveWeek(+1));
   $("week-next").addEventListener("click", ()=> moveWeek(-1));
   $("refresh").addEventListener("click", fetchData);

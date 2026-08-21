@@ -135,18 +135,34 @@ function getTarget_() {
   return { type: "학년", target: gs.map(function (g) { return "고" + g; }).join(", ") };
 }
 
-// 대상에서 학년 게이팅용 숫자 목록을 뽑는다 (학생 페이지 카드 게이팅용).
-//  학년 대상 → ["1","3"] 형태 / 전체·개인·일부 → null (학년으로 막지 않음)
-function targetGrades_() {
+// 학년 문자열 → { lv:'중'|'고'|'', d:'1'~'3'|'' }
+//  '2026 중등 2학년' / '중2' / '고2' / '2'(옛 형식, 고등) 모두 받는다.
+function gradeKey_(s) {
+  s = String(s || "");
+  var lv = s.indexOf("중") >= 0 ? "중" : (s.indexOf("고") >= 0 ? "고" : "");
+  var m = s.replace(/20\d{2}/, "").match(/[1-3]/);
+  return { lv: lv, d: m ? m[0] : "" };
+}
+// 대상에서 학년 토큰 목록('중2','고3' 형태)을 뽑는다 (신청 폼 학년 선택지용).
+//  학년 대상 → ["중2","고3"] / 전체·개인·일부 → null (학년으로 막지 않음)
+function targetGradeTokens_() {
   var t = getTarget_();
   if (!t.type || t.type.indexOf("학년") < 0) return null;
   var out = {};
   String(t.target || "").split(/\s*[,\n]\s*/).forEach(function (tok) {
-    var m = tok.match(/([1-3])\s*학년/) || tok.match(/고\s*([1-3])/);
-    var d = m ? (m[1] || m[2]) : tok.replace(/[^0-9]/g, "").slice(-1);
-    if (d === "1" || d === "2" || d === "3") out[d] = true;
+    if (!tok.trim()) return;
+    var k = gradeKey_(tok);
+    if (k.d === "1" || k.d === "2" || k.d === "3") out[(k.lv || "고") + k.d] = true;
   });
   var arr = Object.keys(out).sort();
+  return arr.length ? arr : null;
+}
+// (구버전 학생 폼 호환) 고등 학년 숫자 목록만 — ["1","3"] 형태
+function targetGrades_() {
+  var toks = targetGradeTokens_();
+  if (!toks) return null;
+  var arr = toks.filter(function (t) { return t.charAt(0) === "고"; })
+                .map(function (t) { return t.charAt(1); }).sort();
   return arr.length ? arr : null;
 }
 function setTarget_(sel) {
@@ -166,12 +182,13 @@ function eligibleForTarget_(sel, data) {
   if (!tokens.length) return true;
   var name = String(data.name || "").trim();
   var school = String(data.school || "").trim();
-  var gd = String(data.grade || "").replace(/[^0-9]/g, "").slice(-1);   // 학년 숫자(1~3)
+  var gk = gradeKey_(data.grade);   // 중·고 구분 학년 (옛 형식 '2'는 고등으로)
   if (sel.type.indexOf("학년") >= 0) {
+    if (!gk.d) return false;
+    var glv = gk.lv || "고";
     return tokens.some(function (t) {
-      var m = String(t).match(/([1-3])\s*학년/) || String(t).match(/고\s*([1-3])/);
-      var d = m ? (m[1] || m[2]) : String(t).replace(/[^0-9]/g, "").slice(-1);
-      return d && gd && d === gd;
+      var k = gradeKey_(t);
+      return k.d && k.d === gk.d && (k.lv || "고") === glv;
     });
   }
   // 개인 · 일부: 이름 또는 동명이인 구분 토큰 '이름|학교|학년'
@@ -181,8 +198,8 @@ function eligibleForTarget_(sel, data) {
       var tn = (p[0] || "").trim(), ts = (p[1] || "").trim(), tg = (p[2] || "").trim();
       if (!tn || tn !== name) return false;
       if (ts && school && !schoolLoose_(ts, school)) return false;
-      var td = tg.replace(/[^0-9]/g, "").slice(-1);
-      if (td && gd && td !== gd) return false;
+      var tk = gradeKey_(tg);
+      if (tk.d && gk.d && (tk.d !== gk.d || (tk.lv && gk.lv && tk.lv !== gk.lv))) return false;
       return true;
     }
     return t === name;
@@ -199,6 +216,38 @@ function schoolLoose_(a, b) {
   var nb = b.replace(/(등학교|고등학교|중학교|학교|고|중)$/, "");
   if (na && nb && na === nb) return true;
   return a.indexOf(b) >= 0 || b.indexOf(a) >= 0;
+}
+
+// ── 강사별 시간대 ───────────────────────────────────────────
+// [{teacher:"이승연", slots:["수 저녁 7:00-8:30", ...]}, ...]  (배정 페이지에서 설정)
+// 설정된 강사는 자기 목록의 시간대만 학생에게 보이고, 정원도 강사별로 센다.
+// 목록에 없는 강사(또는 설정을 아예 안 쓰면)는 기존 공통 시간대를 그대로 쓴다.
+var TSLOTS_KEY = "teacherSlots";
+function cleanTeacherSlots_(arr) {
+  return (Array.isArray(arr) ? arr : []).map(function (t) {
+    return { teacher: String((t && t.teacher) || "").trim(),
+             slots: (t && Array.isArray(t.slots) ? t.slots : [])
+                      .map(function (s) { return String(s || "").trim().slice(0, 60); }).filter(String) };
+  }).filter(function (t) { return t.teacher; }).slice(0, 40);
+}
+function getTeacherSlots_() {
+  var v = PropertiesService.getScriptProperties().getProperty(TSLOTS_KEY);
+  if (!v) return [];
+  try { return cleanTeacherSlots_(JSON.parse(v)); } catch (e) { return []; }
+}
+function setTeacherSlots_(arr) {
+  var clean = cleanTeacherSlots_(arr);
+  PropertiesService.getScriptProperties().setProperty(TSLOTS_KEY, JSON.stringify(clean));
+  return clean;
+}
+// 이 강사의 시간대 목록. 강사별 설정이 있고 이 강사가 목록에 있으면 그 목록,
+// 아니면 null(공통 시간대 사용).
+function slotsForTeacher_(teacher) {
+  var ts = getTeacherSlots_();
+  if (!ts.length) return null;
+  var nm = String(teacher || "").trim();
+  for (var i = 0; i < ts.length; i++) if (ts[i].teacher === nm) return ts[i].slots;
+  return null;
 }
 
 // 정원 계산에서 제외할 학생 — 다른 주 클리닉인데 같은 신청 주차 묶음에 들어온 경우.
@@ -274,17 +323,24 @@ function handleSubmit_(data) {
         ? { result: "grade_closed", grades: targetGrades_() || [] }   // 학년 대상 → 기존 안내문 재사용
         : { result: "not_target" };
     }
-    var grade = String(data.grade || "").replace(/[^0-9]/g, "");
+    var gk = gradeKey_(data.grade);
 
     var sheet = getSheet_();
     var nowDate = new Date();
     var slot = data.time || "";
+    // 강사별 시간대 설정이 있으면 그 강사의 목록에 있는 시간대만 받는다
+    var teacher = String(data.teacher || "").trim();
+    var tSlots = slotsForTeacher_(teacher);
+    if (tSlots && slot && tSlots.indexOf(slot) < 0) {
+      return { result: "bad_slot", teacher: teacher };
+    }
     // 정원 주차 = 지금 신청하면 가게 될 '실제 클리닉 날짜'의 주차
     var nowWeek = meetWeekKey_(nowDate, slot);
 
-    // 정원 확인 (같은 '클리닉 주차 + 시간대'의 학생 수 기준)
+    // 정원 확인 (같은 '클리닉 주차 + 시간대'의 학생 수 기준 —
+    //  강사별 시간대를 쓰는 강사는 그 강사의 신청만 센다)
     if (slot) {
-      var info = slotInfo_(sheet, slot, nowWeek);
+      var info = slotInfo_(sheet, slot, nowWeek, tSlots ? teacher : "");
       var meKey = (data.name || "") + "|" + (data.school || "") + "|" + (data.phone || "");
       if (!info.students[meKey] && info.count >= SLOT_CAP) {
         return { result: "full", slot: slot, cap: SLOT_CAP };
@@ -310,7 +366,7 @@ function handleSubmit_(data) {
         r.content || "",
         r.count || "",
         data.memo || "",
-        grade ? ("고" + grade) : "",              // 학년
+        gk.d ? ((gk.lv || "고") + gk.d) : "",     // 학년 ('중2'/'고3' — 옛 숫자 형식은 고등)
         data.studentId ? "'" + data.studentId : "", // 학생ID(부모님 8자리)
         data.teacher || "",                       // 담당강사
         String(data.token || "")                  // 토큰 — 학생 페이지 '내 클리닉 신청' 매칭 키
@@ -328,17 +384,19 @@ function handleSubmit_(data) {
 
 // 특정 '클리닉 주차 + 슬롯'에 이미 신청한 학생 집합과 인원 수
 // (주차는 제출일이 아니라 그 신청이 향하는 실제 클리닉 날짜 기준)
-function slotInfo_(sheet, slot, week) {
+function slotInfo_(sheet, slot, week, teacher) {
   var values = sheet.getDataRange().getValues();
   var headers = values.shift() || [];
   var iT = headers.indexOf("클리닉시간"),
       iN = headers.indexOf("이름"),
       iS = headers.indexOf("학교"),
       iP = headers.indexOf("전화뒤4"),
-      iD = headers.indexOf("제출시각");
+      iD = headers.indexOf("제출시각"),
+      iC = headers.indexOf("담당강사");
   var students = {};
   values.forEach(function (r) {
     if (String(r[iT]) === slot && meetWeekKey_(r[iD], slot) === week) {
+      if (teacher && iC >= 0 && String(r[iC] || "").trim() !== teacher) return;   // 강사별 정원
       if (isExcluded_(r[iN], weekKey_(r[iD]))) return;
       students[r[iN] + "|" + r[iS] + "|" + r[iP]] = true;
     }
@@ -347,6 +405,7 @@ function slotInfo_(sheet, slot, week) {
 }
 
 // 이번 주차의 슬롯별 학생 수 (폼에서 마감 표시용)
+//  counts: { 시간대: n } / tcounts: { '강사|시간대': n } — 강사별 시간대 정원 표시용
 function slotCounts_() {
   var sheet = getSheet_();
   var values = sheet.getDataRange().getValues();
@@ -355,21 +414,26 @@ function slotCounts_() {
       iN = headers.indexOf("이름"),
       iS = headers.indexOf("학교"),
       iP = headers.indexOf("전화뒤4"),
-      iD = headers.indexOf("제출시각");
+      iD = headers.indexOf("제출시각"),
+      iC = headers.indexOf("담당강사");
   // 슬롯별 '이번에 신청하면 가게 될 클리닉 주차'와 같은 주차의 신청만 센다
   var now = new Date();
   var nowKeys = {};
   function nowKeyFor(s) { if (!(s in nowKeys)) nowKeys[s] = meetWeekKey_(now, s); return nowKeys[s]; }
-  var perSlot = {};
+  var perSlot = {}, perTS = {};
   values.forEach(function (r) {
     var slot = String(r[iT] || ""); if (!slot) return;
     if (meetWeekKey_(r[iD], slot) !== nowKeyFor(slot)) return;
     if (isExcluded_(r[iN], weekKey_(r[iD]))) return;
-    (perSlot[slot] = perSlot[slot] || {})[r[iN] + "|" + r[iS] + "|" + r[iP]] = true;
+    var key = r[iN] + "|" + r[iS] + "|" + r[iP];
+    (perSlot[slot] = perSlot[slot] || {})[key] = true;
+    var tc = iC >= 0 ? String(r[iC] || "").trim() : "";
+    if (tc) (perTS[tc + "|" + slot] = perTS[tc + "|" + slot] || {})[key] = true;
   });
-  var counts = {};
+  var counts = {}, tcounts = {};
   Object.keys(perSlot).forEach(function (s) { counts[s] = Object.keys(perSlot[s]).length; });
-  return counts;
+  Object.keys(perTS).forEach(function (s) { tcounts[s] = Object.keys(perTS[s]).length; });
+  return { counts: counts, tcounts: tcounts };
 }
 
 // 제출시각을 화요일 시작 주(화~월) 단위 키("yyyy-MM-dd", Asia/Seoul)로 변환
@@ -416,8 +480,22 @@ function doGet(e) {
   // 폼: 이번 주차의 슬롯별 마감 여부 조회 (학생 수만 반환, 개인정보 없음)
   // targetType: 신청 대상 유형만 공개 (명단은 비공개 — 학생 페이지 카드 게이팅용)
   if (params.action === "slots") {
-    // grades: 대상이 '학년'일 때만 학년 숫자 목록 (전체·개인·일부 → null = 학년으로 안 막음)
-    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: slotCounts_(), open: isOpen_(), slots: getActiveSlots_(), grades: targetGrades_(), targetType: getTarget_().type });
+    // grades: (구버전 호환) 고등 학년 숫자 목록 / gradeTokens: '중2','고3' 형태 (전체·개인·일부 → null)
+    // teachers: 강사별 시간대 설정 / tcounts: 강사별 시간대 정원
+    var sc = slotCounts_();
+    return reply_(params.callback, { result: "success", cap: SLOT_CAP, counts: sc.counts, tcounts: sc.tcounts,
+      open: isOpen_(), slots: getActiveSlots_(), teachers: getTeacherSlots_(),
+      grades: targetGrades_(), gradeTokens: targetGradeTokens_(), targetType: getTarget_().type });
+  }
+
+  // 강사별 시간대 저장 (교사 전용) — ?action=setTeacherSlots&data=[{teacher,slots}]&pw=
+  if (params.action === "setTeacherSlots") {
+    if (params.pw !== TEACHER_PASSWORD) {
+      return reply_(params.callback, { result: "error", message: "unauthorized" });
+    }
+    var tarr = [];
+    try { tarr = params.data ? JSON.parse(params.data) : []; } catch (e) { tarr = []; }
+    return reply_(params.callback, { result: "success", teachers: setTeacherSlots_(tarr) });
   }
 
   // 시간대 마스터 편집 + 열 시간대 저장 (교사 전용) — 한 번에 저장
@@ -520,7 +598,7 @@ function doGet(e) {
       headers.forEach(function (h, i) { o[h] = r[i]; });
       return o;
     });
-    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: getMasterSlots_(), target: getTarget_() });
+    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: getMasterSlots_(), teachers: getTeacherSlots_(), target: getTarget_() });
   }
 
   return ContentService.createTextOutput("이수경국어 클리닉 수업 신청 엔드포인트가 작동 중입니다.");

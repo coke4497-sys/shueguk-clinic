@@ -218,14 +218,16 @@ function schoolLoose_(a, b) {
   return a.indexOf(b) >= 0 || b.indexOf(a) >= 0;
 }
 
-// ── 강사별 시간대 ───────────────────────────────────────────
-// [{teacher:"이승연", slots:["수 저녁 7:00-8:30", ...]}, ...]  (배정 페이지에서 설정)
-// 설정된 강사는 자기 목록의 시간대만 학생에게 보이고, 정원도 강사별로 센다.
-// 목록에 없는 강사(또는 설정을 아예 안 쓰면)는 기존 공통 시간대를 그대로 쓴다.
+// ── 강사별 시간대·신청받기 ──────────────────────────────────
+// [{teacher:"이승연", slots:["수 저녁 7:00-8:30", ...], open:true}, ...]  (배정 페이지에서 설정)
+// 강사별 설정이 하나라도 있으면 클리닉은 강사별로만 운영된다:
+//   학생은 담당 강사의 시간대 안에서만 신청, 정원도 강사별, open=false면 그 강사만 신청 중단.
+//   설정에 없는 강사는 신청 불가(bad_slot). 설정이 하나도 없으면 예전 공통 시간대 방식.
 var TSLOTS_KEY = "teacherSlots";
 function cleanTeacherSlots_(arr) {
   return (Array.isArray(arr) ? arr : []).map(function (t) {
     return { teacher: String((t && t.teacher) || "").trim(),
+             open: !(t && t.open === false),
              slots: (t && Array.isArray(t.slots) ? t.slots : [])
                       .map(function (s) { return String(s || "").trim().slice(0, 60); }).filter(String) };
   }).filter(function (t) { return t.teacher; }).slice(0, 40);
@@ -240,13 +242,9 @@ function setTeacherSlots_(arr) {
   PropertiesService.getScriptProperties().setProperty(TSLOTS_KEY, JSON.stringify(clean));
   return clean;
 }
-// 이 강사의 시간대 목록. 강사별 설정이 있고 이 강사가 목록에 있으면 그 목록,
-// 아니면 null(공통 시간대 사용).
-function slotsForTeacher_(teacher) {
-  var ts = getTeacherSlots_();
-  if (!ts.length) return null;
+function teacherEntry_(list, teacher) {
   var nm = String(teacher || "").trim();
-  for (var i = 0; i < ts.length; i++) if (ts[i].teacher === nm) return ts[i].slots;
+  for (var i = 0; i < list.length; i++) if (list[i].teacher === nm) return list[i];
   return null;
 }
 
@@ -328,19 +326,22 @@ function handleSubmit_(data) {
     var sheet = getSheet_();
     var nowDate = new Date();
     var slot = data.time || "";
-    // 강사별 시간대 설정이 있으면 그 강사의 목록에 있는 시간대만 받는다
+    // 강사별 운영: 설정이 있으면 담당 강사의 열린 시간대만 받는다
     var teacher = String(data.teacher || "").trim();
-    var tSlots = slotsForTeacher_(teacher);
-    if (tSlots && slot && tSlots.indexOf(slot) < 0) {
-      return { result: "bad_slot", teacher: teacher };
+    var allT = getTeacherSlots_();
+    var perTeacher = allT.length > 0;
+    if (perTeacher) {
+      var tEntry = teacherEntry_(allT, teacher);
+      if (!tEntry) return { result: "bad_slot", teacher: teacher };          // 시간대 미설정 강사
+      if (tEntry.open === false) return { result: "teacher_closed", teacher: teacher };
+      if (slot && tEntry.slots.indexOf(slot) < 0) return { result: "bad_slot", teacher: teacher };
     }
     // 정원 주차 = 지금 신청하면 가게 될 '실제 클리닉 날짜'의 주차
     var nowWeek = meetWeekKey_(nowDate, slot);
 
-    // 정원 확인 (같은 '클리닉 주차 + 시간대'의 학생 수 기준 —
-    //  강사별 시간대를 쓰는 강사는 그 강사의 신청만 센다)
+    // 정원 확인 (같은 '클리닉 주차 + 시간대'의 학생 수 기준 — 강사별 운영이면 그 강사의 신청만 센다)
     if (slot) {
-      var info = slotInfo_(sheet, slot, nowWeek, tSlots ? teacher : "");
+      var info = slotInfo_(sheet, slot, nowWeek, perTeacher ? teacher : "");
       var meKey = (data.name || "") + "|" + (data.school || "") + "|" + (data.phone || "");
       if (!info.students[meKey] && info.count >= SLOT_CAP) {
         return { result: "full", slot: slot, cap: SLOT_CAP };

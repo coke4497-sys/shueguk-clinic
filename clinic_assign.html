@@ -208,14 +208,19 @@
   function init(){
     if(inited) return; inited=true;
     loadRoster();
-    picker = StudentPicker.create(document.getElementById('picker'), {
-      endpoint: REPORT_API,
-      onChange: function(sel){
-        currentSel = sel;
-        var s=document.getElementById('assignStatus');
-        if(sel && s.classList.contains('err')){ s.textContent=''; s.className='status'; }
-      }
-    });
+    // 학생 선택 위젯이 못 불러와져도(외부 스크립트 실패) 시간대·현황 등 나머지는 동작하게
+    try {
+      picker = StudentPicker.create(document.getElementById('picker'), {
+        endpoint: REPORT_API,
+        onChange: function(sel){
+          currentSel = sel;
+          var s=document.getElementById('assignStatus');
+          if(sel && s.classList.contains('err')){ s.textContent=''; s.className='status'; }
+        }
+      });
+    } catch (e) {
+      document.getElementById('picker').innerHTML='<p class="muted">학생 선택 위젯을 불러오지 못했어요 — 새로고침해 주세요.</p>';
+    }
     loadAssignList();
     loadClinicSettings();
   }

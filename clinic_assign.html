@@ -123,35 +123,21 @@
     <p class="intro">선택한 학생을 클리닉 대상으로 배정하고, 신청/미신청을 확인합니다.</p>
   </header>
 
-  <!-- 신청 설정 (신청받기 · 시간대) -->
+  <!-- 강사별 시간대 · 신청받기 -->
   <section class="card">
-    <h2><span class="dot"></span>신청 설정</h2>
-    <p class="sub">신청받기 상태와 신청 폼에 열릴 시간대를 관리합니다.</p>
-    <button type="button" class="submit" id="openToggle" onclick="toggleOpen()" style="background:#5a8275;">신청 상태 확인 중…</button>
-    <div class="grp-title">신청받을 시간대 <span style="font-weight:400;color:#9aa6a0">(체크 = 열림 · ✕ = 목록에서 삭제)</span></div>
-    <div class="slot-list" id="slotList"><p class="muted">불러오는 중…</p></div>
-    <div class="slot-addrow">
-      <input type="text" id="slotNew" placeholder="예: 수 저녁 7:00–8:30" maxlength="40" />
-      <button type="button" class="slot-add" id="slotAddBtn" onclick="addSlot()">목록에 추가</button>
-    </div>
-    <button type="button" class="submit" id="slotSaveBtn" onclick="saveSlots()">시간대 저장</button>
-    <div class="status" id="slotStatus"></div>
-  </section>
-
-  <!-- 강사별 시간대 -->
-  <section class="card">
-    <h2><span class="dot"></span>강사별 시간대</h2>
-    <p class="sub">강사를 골라 그 강사의 클리닉 시간대를 넣어두면, 학생 신청 폼에서 <b>그 강사를 담당으로 고른 학생에게는 그 시간대만</b> 보이고 정원(9명)도 강사별로 따로 셉니다.<br>
-      설정하지 않은 강사는 위의 공통 시간대를 그대로 씁니다. 시간대를 모두 지우면 그 강사는 다시 공통 시간대로 돌아가요.</p>
+    <h2><span class="dot"></span>강사별 시간대 · 신청받기</h2>
+    <p class="sub">강사를 골라 클리닉 시간대를 넣어두면, 학생 신청 폼에서 <b>그 강사를 담당으로 고른 학생에게는 그 시간대만</b> 보이고 정원(9명)도 강사별로 따로 셉니다.<br>
+      신청받기 중단도 강사별로 할 수 있어요. <b>시간대가 설정되지 않은 강사의 학생은 신청할 수 없습니다.</b></p>
     <div class="wk-note" id="tslotSummary">확인 중…</div>
     <label for="tslotTeacher">강사 선택</label>
     <select id="tslotTeacher" onchange="renderTslot()"><option value="">선택</option></select>
+    <button type="button" class="submit" id="tslotOpenBtn" onclick="tslotToggleOpen()" style="background:#5a8275;display:none;"></button>
     <div class="slot-list" id="tslotList" style="margin-top:12px;"><p class="muted">강사를 선택하세요.</p></div>
     <div class="slot-addrow">
       <input type="text" id="tslotNew" placeholder="예: 수 저녁 7:00-8:30" maxlength="40" />
       <button type="button" class="slot-add" onclick="tslotAdd()">시간대 추가</button>
     </div>
-    <button type="button" class="submit" id="tslotSaveBtn" onclick="tslotSave()">강사별 시간대 저장</button>
+    <button type="button" class="submit" id="tslotSaveBtn" onclick="tslotSave()">저장</button>
     <div class="status" id="tslotStatus"></div>
   </section>
 
@@ -232,83 +218,15 @@
     loadClinicSettings();
   }
 
-  /* ===== 신청 설정 (신청받기 · 시간대 · 현재 대상) — 클리닉 백엔드 ===== */
-  var clinicOpen = true, slotMaster = [], slotActive = [];
+  /* ===== 신청 설정 (강사별 시간대·신청받기 · 현재 대상) — 클리닉 백엔드 ===== */
   function loadClinicSettings(){
     fetchJSON(CLINIC_API+'?action=data&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
       .then(function(d){
-        if(!d || d.result!=='success'){ document.getElementById('slotList').innerHTML='<p class="muted">설정을 불러오지 못했어요. (클리닉 백엔드 재배포 확인)</p>'; return; }
-        clinicOpen = (typeof d.open==='undefined') ? true : !!d.open;
-        slotMaster = (d.allSlots||[]).slice();
-        slotActive = (d.slots||[]).slice();
+        if(!d || d.result!=='success'){ document.getElementById('tslotSummary').textContent='설정을 불러오지 못했어요. (클리닉 백엔드 재배포 확인)'; return; }
         tslots = (d.teachers||[]).slice();
-        renderOpenBtn(); renderSlots();
         renderTslotSelect(); renderTslot(); renderTslotSummary();
         renderTargetCur(d.target||null);
-      }).catch(function(){ document.getElementById('slotList').innerHTML='<p class="muted">설정을 불러오지 못했어요 — 인터넷 확인</p>'; });
-  }
-  function renderOpenBtn(){
-    var b=document.getElementById('openToggle');
-    b.textContent = clinicOpen ? '🟢 신청 받는 중 — 누르면 중단' : '‖ 신청 중단됨 — 누르면 다시 받기';
-    b.style.background = clinicOpen ? '#5a8275' : '#b07d2b';
-  }
-  function toggleOpen(){
-    var next=!clinicOpen;
-    if(!confirm(next?'지금부터 클리닉 신청을 다시 받을까요?':'지금부터 클리닉 신청을 중단할까요?\n학생 신청 화면에서 제출이 막혀요.')) return;
-    var b=document.getElementById('openToggle'); b.disabled=true;
-    fetchJSON(CLINIC_API+'?action=setStatus&open='+(next?'1':'0')+'&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
-      .then(function(d){ b.disabled=false;
-        if(d&&d.result==='success'){ clinicOpen=!!d.open; renderOpenBtn(); }
-        else alert('상태 변경 실패: '+((d&&d.message)||'오류'));
-      }).catch(function(){ b.disabled=false; alert('상태 변경 실패 — 인터넷 확인'); });
-  }
-  function slotStatus(m,k){ var s=document.getElementById('slotStatus'); s.textContent=m||''; s.className='status'+(k?(' '+k):''); }
-  function renderSlots(){
-    var box=document.getElementById('slotList');
-    if(!slotMaster.length){ box.innerHTML='<p class="muted">시간대가 없어요 — 아래에서 추가하세요.</p>'; return; }
-    box.innerHTML=slotMaster.map(function(s,i){
-      var on=slotActive.indexOf(s)>-1;
-      return '<label class="slot-chk'+(on?' on':'')+'"><input type="checkbox" data-i="'+i+'"'+(on?' checked':'')+'>'+esc(s)+
-             '<button type="button" class="rm" data-i="'+i+'" title="목록에서 삭제">✕</button></label>';
-    }).join('');
-    box.querySelectorAll('input[type=checkbox]').forEach(function(cb){
-      cb.addEventListener('change', function(){
-        var s=slotMaster[+cb.dataset.i];
-        if(cb.checked){ if(slotActive.indexOf(s)<0) slotActive.push(s); }
-        else slotActive=slotActive.filter(function(x){ return x!==s; });
-        cb.closest('.slot-chk').classList.toggle('on', cb.checked);
-        slotStatus("변경됨 — '시간대 저장'을 눌러 반영하세요.");
-      });
-    });
-    box.querySelectorAll('button.rm').forEach(function(b){
-      b.addEventListener('click', function(e){
-        e.preventDefault();
-        var s=slotMaster[+b.dataset.i];
-        if(!confirm("'"+s+"' 시간대를 목록에서 지울까요?\n(저장을 눌러야 반영됩니다. 지난 신청 기록은 그대로 남아요.)")) return;
-        slotMaster.splice(+b.dataset.i,1);
-        slotActive=slotActive.filter(function(x){ return x!==s; });
-        renderSlots();
-        slotStatus("변경됨 — '시간대 저장'을 눌러 반영하세요.");
-      });
-    });
-  }
-  function addSlot(){
-    var inp=document.getElementById('slotNew'); var v=inp.value.trim();
-    if(!v){ inp.focus(); return; }
-    if(slotMaster.indexOf(v)>-1){ slotStatus('이미 목록에 있는 시간대예요.','err'); return; }
-    slotMaster.push(v); slotActive.push(v);   // 새 시간대는 바로 '열림'으로
-    renderSlots(); inp.value='';
-    slotStatus("추가됨 — '시간대 저장'을 눌러 반영하세요.");
-  }
-  function saveSlots(){
-    var btn=document.getElementById('slotSaveBtn'); btn.disabled=true; var lb=btn.textContent; btn.textContent='저장 중…';
-    fetchJSON(CLINIC_API+'?action=setSlotMaster&slots='+encodeURIComponent(JSON.stringify(slotMaster))
-      +'&active='+encodeURIComponent(JSON.stringify(slotActive))
-      +'&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
-      .then(function(d){ btn.disabled=false; btn.textContent=lb;
-        if(d&&d.result==='success'){ slotMaster=(d.allSlots||slotMaster).slice(); slotActive=(d.slots||slotActive).slice(); renderSlots(); slotStatus('✓ 저장됐어요. 학생 신청 폼에 바로 반영됩니다.','ok'); }
-        else slotStatus('저장 실패: '+((d&&d.message)==='unauthorized'?'권한 없음':((d&&d.message)||'클리닉 백엔드 재배포 확인')),'err');
-      }).catch(function(){ btn.disabled=false; btn.textContent=lb; slotStatus('저장 실패 — 인터넷 확인','err'); });
+      }).catch(function(){ document.getElementById('tslotSummary').textContent='설정을 불러오지 못했어요 — 인터넷 확인'; });
   }
   function renderTargetCur(t){
     var el=document.getElementById('targetCur');
@@ -316,7 +234,6 @@
     if(!t.type || t.type.indexOf('전체')>=0) el.innerHTML='현재 신청 대상: <b>전 학년 (모든 학생)</b>';
     else el.innerHTML='현재 신청 대상: <b>'+esc(t.type)+'</b> — '+esc(prettyTarget(t.target)||'—');
   }
-  document.getElementById('slotNew').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addSlot(); } });
   function fetchJSON(url){ return fetch(url, {cache:'no-store'}).then(function(r){ return r.json(); }); }
 
   /* ===== 강사별 시간대 ===== */
@@ -338,17 +255,35 @@
   }
   function renderTslotSummary(){
     var el=document.getElementById('tslotSummary');
-    if(!tslots.length){ el.textContent='아직 강사별 설정이 없어요 — 모든 강사가 공통 시간대를 씁니다.'; return; }
-    el.innerHTML='강사별 시간대 사용 중: '+tslots.map(function(t){ return '<b>'+esc(t.teacher)+'T</b>('+t.slots.length+')'; }).join(' · ')
-      +'<br><span style="color:#9aa6a0">여기에 없는 강사는 공통 시간대를 씁니다.</span>';
+    if(!tslots.length){ el.textContent='아직 강사별 설정이 없어요 — 시간대를 설정한 강사의 학생만 신청할 수 있습니다.'; return; }
+    el.innerHTML='설정된 강사: '+tslots.map(function(t){
+        return '<b>'+esc(t.teacher)+'T</b>('+t.slots.length+(t.open===false?' · 중단':'')+')';
+      }).join(' · ')
+      +'<br><span style="color:#9aa6a0">여기에 없는 강사의 학생은 신청할 수 없어요.</span>';
+  }
+  function renderTslotOpenBtn(t){
+    var b=document.getElementById('tslotOpenBtn');
+    if(!t){ b.style.display='none'; return; }
+    b.style.display='';
+    var open = t.open !== false;
+    b.textContent = open ? '🟢 '+t.teacher+'T 신청 받는 중 — 누르면 중단' : '‖ '+t.teacher+'T 신청 중단됨 — 누르면 다시 받기';
+    b.style.background = open ? '#5a8275' : '#b07d2b';
+  }
+  function tslotToggleOpen(){
+    var nm=document.getElementById('tslotTeacher').value;
+    var t=tslotOf(nm); if(!t) return;
+    t.open = (t.open === false);   // 중단이었으면 받기로, 받는 중이었으면 중단으로
+    renderTslotOpenBtn(t); renderTslotSummary();
+    tslotStatus("변경됨 — '저장'을 눌러 반영하세요.");
   }
   function renderTslot(){
     var nm=document.getElementById('tslotTeacher').value;
     var box=document.getElementById('tslotList');
+    var t=nm ? tslotOf(nm) : null;
+    renderTslotOpenBtn(t);
     if(!nm){ box.innerHTML='<p class="muted">강사를 선택하세요.</p>'; return; }
-    var t=tslotOf(nm);
     if(!t || !t.slots.length){
-      box.innerHTML='<p class="muted">'+esc(nm)+'T는 아직 설정이 없어요 — 학생에게는 공통 시간대가 보입니다.<br>아래에서 시간대를 추가하세요.</p>';
+      box.innerHTML='<p class="muted">'+esc(nm)+'T는 아직 시간대가 없어요 — <b>이 강사의 학생은 신청할 수 없습니다.</b><br>아래에서 시간대를 추가하세요.</p>';
       return;
     }
     box.innerHTML=t.slots.map(function(s,i){
@@ -360,7 +295,7 @@
         t.slots.splice(+b.dataset.i,1);
         if(!t.slots.length) tslots=tslots.filter(function(x){ return x!==t; });   // 모두 지우면 설정 해제 → 공통으로
         renderTslot(); renderTslotSelect(); renderTslotSummary();
-        tslotStatus("변경됨 — '강사별 시간대 저장'을 눌러 반영하세요.");
+        tslotStatus("변경됨 — '저장'을 눌러 반영하세요.");
       });
     });
   }
@@ -370,11 +305,11 @@
     var inp=document.getElementById('tslotNew'); var v=inp.value.trim();
     if(!v){ inp.focus(); return; }
     var t=tslotOf(nm);
-    if(!t){ t={teacher:nm, slots:[]}; tslots.push(t); }
+    if(!t){ t={teacher:nm, slots:[], open:true}; tslots.push(t); }
     if(t.slots.indexOf(v)>-1){ tslotStatus('이미 있는 시간대예요.','err'); return; }
     t.slots.push(v); inp.value='';
     renderTslot(); renderTslotSelect(); renderTslotSummary();
-    tslotStatus("추가됨 — '강사별 시간대 저장'을 눌러 반영하세요.");
+    tslotStatus("추가됨 — '저장'을 눌러 반영하세요.");
   }
   function tslotSave(){
     var btn=document.getElementById('tslotSaveBtn'); btn.disabled=true; var lb=btn.textContent; btn.textContent='저장 중…';

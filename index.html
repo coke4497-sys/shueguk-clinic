@@ -492,22 +492,41 @@
     // 담당강사는 항상 보이며 선택 가능. 바꾸면 오류 표시 해제 + 그 강사의 시간대로 갱신.
     teacherSel.addEventListener("change", function(){
       document.getElementById("f-teacher").classList.remove("invalid");
-      buildTimeOptions(currentSlots());
-      applySlotAvailability();
+      updateTimeArea();
     });
   })();
 
-  // 선택된 담당 강사의 시간대 목록 — 강사별 설정이 있으면 그 목록, 없으면 공통 시간대
-  function currentSlots(){
+  // 선택된 강사의 설정 — 강사별 운영이 아니면(설정 없음) null
+  function teacherEntry(){
+    if (!teacherSlotMap) return null;
     var t = document.getElementById("teacher").value.trim();
-    if (teacherSlotMap && teacherSlotMap[t] && teacherSlotMap[t].length) return teacherSlotMap[t];
-    return globalSlots;
+    return teacherSlotMap[t] || null;
   }
-  // 이 시간대의 사용 인원 — 강사별 시간대를 쓰는 강사는 그 강사의 신청만 센다
+  // 시간대 목록 — 강사별 운영이면 담당 강사의 목록, 아니면 공통 시간대
+  function currentSlots(){
+    if (!teacherSlotMap) return globalSlots;
+    var e = teacherEntry();
+    return e ? e.slots : [];
+  }
+  // 이 시간대의 사용 인원 — 강사별 운영이면 그 강사의 신청만 센다
   function slotUsed(slot){
+    if (!teacherSlotMap) return slotCounts[slot] || 0;
     var t = document.getElementById("teacher").value.trim();
-    if (teacherSlotMap && teacherSlotMap[t] && teacherSlotMap[t].length) return tcounts[t + "|" + slot] || 0;
-    return slotCounts[slot] || 0;
+    return tcounts[t + "|" + slot] || 0;
+  }
+  // 담당 강사에 따라 시간대 영역 갱신 — 미설정·신청 중단 강사는 안내 문구 표시
+  function updateTimeArea(){
+    var sel = document.getElementById("clinic-time");
+    if (teacherSlotMap){
+      var t = document.getElementById("teacher").value.trim();
+      if (!t){ sel.disabled = false; sel.innerHTML = '<option value="">먼저 담당 강사를 선택해 주세요</option>'; return; }
+      var e = teacherEntry();
+      if (!e){ sel.disabled = true; sel.innerHTML = '<option value="">담당 강사님의 클리닉 시간이 아직 준비되지 않았어요</option>'; return; }
+      if (e.open === false){ sel.disabled = true; sel.innerHTML = '<option value="">담당 강사님이 지금은 신청을 받지 않아요</option>'; return; }
+    }
+    sel.disabled = false;
+    buildTimeOptions(currentSlots());
+    applySlotAvailability();
   }
   // 슬롯 정원 불러와 마감 시간대 비활성화
   function applySlotAvailability(){
@@ -567,15 +586,16 @@
       slotCounts = resp.counts || {};
       tcounts = resp.tcounts || {};
       globalSlots = Array.isArray(resp.slots) ? resp.slots : [];
-      // 강사별 시간대 설정 — 있으면 담당 강사에 따라 시간대 목록이 바뀐다
+      // 강사별 운영 설정 — 있으면 담당 강사에 따라 시간대·신청받기가 바뀐다
       teacherSlotMap = null;
       if (Array.isArray(resp.teachers) && resp.teachers.length){
         teacherSlotMap = {};
-        resp.teachers.forEach(function(t){ if (t && t.teacher) teacherSlotMap[t.teacher] = t.slots || []; });
+        resp.teachers.forEach(function(t){
+          if (t && t.teacher) teacherSlotMap[t.teacher] = { slots: t.slots || [], open: t.open !== false };
+        });
       }
-      buildTimeOptions(currentSlots());                                 // 선택된 강사의 시간대로 갱신
       buildGradeOptions(resp.gradeTokens || resp.grades);               // 신청 가능 학년만 표시
-      applySlotAvailability();
+      updateTimeArea();                                                 // 선택된 강사의 시간대로 갱신
     });
   }
   loadSlots();
@@ -675,6 +695,11 @@
         f.querySelector(".err-msg").textContent = "선택하신 시간은 마감되었어요. 다른 시간을 선택해 주세요.";
         f.classList.add("invalid");
         f.scrollIntoView({behavior:"smooth", block:"center"});
+      } else if (resp && resp.result === "teacher_closed"){
+        // 담당 강사가 신청을 중단한 상태
+        btn.disabled = false; btn.textContent = "신청하기";
+        loadSlots();
+        alert("담당 강사님이 지금은 클리닉 신청을 받지 않아요.\n자세한 내용은 선생님께 문의해 주세요.");
       } else if (resp && resp.result === "bad_slot"){
         // 담당 강사의 시간대가 아닌 시간을 고른 경우 (강사·시간대 설정이 바뀐 직후 등)
         btn.disabled = false; btn.textContent = "신청하기";

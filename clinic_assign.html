@@ -142,8 +142,8 @@
     <div class="status" id="tslotStatus"></div>
   </section>
 
-  <!-- 배정 -->
-  <section class="card">
+  <!-- 배정 (강사 선택 후 표시) -->
+  <section class="card" id="assignCard" style="display:none;">
     <h2><span class="dot"></span>학생 배정 · 신청 대상</h2>
     <p class="sub">위에서 고른 <b>강사의 클리닉</b>에 와야 할 학생을 선택하세요. (전 학년 / 학년 / 개인 / 일부)<br>
       배정을 저장하면 <b>그 학생들만 그 강사 클리닉에</b> 신청할 수 있고, 학생 개인 페이지에도 그 학생들에게만 클리닉 카드가 열립니다.</p>
@@ -156,8 +156,8 @@
     <div class="alist" id="assignList"></div>
   </section>
 
-  <!-- 현황 -->
-  <section class="card">
+  <!-- 현황 (강사 선택 후 표시) -->
+  <section class="card" id="statusCard" style="display:none;">
     <h2><span class="dot"></span>신청 현황</h2>
     <p class="sub">배정된 학생과 이번 주(화요일 오픈 · 수~일 진행) 클리닉 신청을 대조합니다. (이름+학교 기준)</p>
     <button type="button" class="submit" id="statusBtn" onclick="loadStatus()" style="background:#5a8275;">현황 불러오기 / 새로고침</button>
@@ -189,7 +189,8 @@
   // 화~월 주차 키(그 주 화요일) — 신청은 화요일 오픈, 같은 주 수~일에 클리닉 진행
   function weekKeyOf(d){ var dow=d.getDay(), since=(dow-2+7)%7; return ymd(new Date(d.getFullYear(),d.getMonth(),d.getDate()-since)); }
   function parseTs(v){ if(!v) return null; if(v instanceof Date) return v; var s=String(v).trim(); var d=new Date(s.indexOf('T')>-1?s:s.replace(' ','T')); return isNaN(d.getTime())?null:d; }
-  function weekLabel(key){ var p=key.split('-'); var tue=new Date(+p[0],+p[1]-1,+p[2]); var wed=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()+1); var sun=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()+5); var f=function(x){return (x.getMonth()+1)+'/'+x.getDate();}; return f(wed)+'~'+f(sun); }
+  // 슈국 스케쥴과 같은 월~일 주차 표기 — 화요일 오픈 클리닉은 그 주(수~일 진행)의 신청
+  function weekLabel(key){ var p=key.split('-'); var tue=new Date(+p[0],+p[1]-1,+p[2]); var mon=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()-1); var sun=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()+5); var f=function(x){return (x.getMonth()+1)+'/'+x.getDate();}; return f(mon)+'~'+f(sun)+' 주차'; }
 
   /* ===== 잠금 ===== */
   (function(){ unlock(); })();   // 비밀번호 게이트 제거(2026-08-14) — 바로 열림
@@ -234,10 +235,15 @@
   /* 페이지 전체 기준 강사 — 강사를 바꾸면 시간대·대상·배정 내역·현황이 함께 바뀐다 */
   function masterTeacher(){ return document.getElementById('tslotTeacher').value; }
   function pageTeacherChanged(){
+    var nm = masterTeacher();
+    // 학생 배정·신청 현황 카드는 강사 클리닉을 선택해야 나타난다
+    document.getElementById('assignCard').style.display = nm ? '' : 'none';
+    document.getElementById('statusCard').style.display = nm ? '' : 'none';
     renderTslot();
     renderTargetCurBox();
     renderAssignListBox();
-    renderStatusBody();
+    if (nm && !STAT) loadStatus();   // 처음 강사를 고르면 현황도 바로 불러온다
+    else renderStatusBody();
   }
   function targetLabel(t){
     if(!t || !t.type) return '';
@@ -405,13 +411,17 @@
     var list = ASSIGNS.filter(function(a){ return !nm || assignTeacherOf(a)===nm; });
     if(!list.length){ box.innerHTML='<p class="muted">'+(nm?esc(nm)+'T 클리닉의 배정 내역이 없어요.':'아직 배정된 클리닉 대상이 없어요.')+'</p>'; return; }
     ASSIGN_ROW = {};
+    var curKey = weekKeyOf(new Date());
     box.innerHTML = '<div class="grp-title">'+(nm?esc(nm)+'T ':'')+'클리닉 배정 내역</div>' + list.map(function(a){
       ASSIGN_ROW[a.rowIndex] = { tool:a.tool||'', item:a.item||'' };
       var tgt = (a.type==='전체') ? '전 학년' : prettyTarget(a.target||'—');
+      // 슈국 스케쥴 주차로 표기 — 화요일에 오픈한 배정은 그 주(수~일)에 올 학생들의 신청
+      var ad = parseTs(a.date), wk = ad ? weekKeyOf(ad) : '';
+      var wl = wk ? weekLabel(wk) : String(a.date||'');
       return '<div class="a-item">' +
         '<span class="a-tag">'+esc(assignTeacherOf(a))+'T · '+esc(a.type||'전체')+'</span>' +
         '<span class="a-target">'+esc(tgt)+(a.memo?(' · '+esc(a.memo)):'')+'</span>' +
-        '<span class="a-date">'+esc(a.date||'')+'</span>' +
+        '<span class="a-date" title="배정일 '+esc(a.date||'')+'">'+esc(wl)+(wk===curKey?' <b style="color:var(--accent)">이번 주</b>':'')+'</span>' +
         '<button type="button" class="a-del" onclick="delAssign('+a.rowIndex+')">삭제</button>' +
       '</div>';
     }).join('');
@@ -527,7 +537,7 @@
     });
     var warnCnt = done.concat(todo).filter(function(r){ return r.ambiguous; }).length;
 
-    var html = '<div class="wk-note">'+(nm?'<b>'+esc(nm)+'T 클리닉</b> · ':'<b>전체 강사</b> · ')+'이번 주 <b>'+weekLabel(curWeek)+'</b> (화요일 오픈 주차) 신청 기준</div>';
+    var html = '<div class="wk-note">'+(nm?'<b>'+esc(nm)+'T 클리닉</b> · ':'<b>전체 강사</b> · ')+'이번 <b>'+weekLabel(curWeek)+'</b> (화요일 오픈 · 수~일 진행) 신청 기준</div>';
     html += '<div class="stat-row">' +
       '<div class="stat assigned"><div class="n">'+assigned.length+'</div><div class="l">배정</div></div>' +
       '<div class="stat done"><div class="n">'+done.length+'</div><div class="l">신청</div></div>' +

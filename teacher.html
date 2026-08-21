@@ -310,13 +310,13 @@
   }
   // 주차 묶음: 실제 클리닉 날짜가 속한 화~월 주
   function rowWeekKey(r){ return weekStartKey(meetDateOf(r)); }
-  // 클리닉 라벨: 신청 주(화~월)와 같은 주의 수~일이 실제 클리닉
+  // 주차 라벨: 슈국 스케쥴과 같은 월~일 주차 표기 (화요일 오픈 클리닉 = 그 주 수~일 진행)
   function weekLabel(key){
     const p = key.split("-"); const tue = new Date(+p[0], +p[1]-1, +p[2]);
-    const cWed = new Date(tue.getFullYear(), tue.getMonth(), tue.getDate()+1);  // 클리닉 수요일
-    const cSun = new Date(tue.getFullYear(), tue.getMonth(), tue.getDate()+5);  // 클리닉 일요일
+    const mon = new Date(tue.getFullYear(), tue.getMonth(), tue.getDate()-1);   // 주차 월요일
+    const sun = new Date(tue.getFullYear(), tue.getMonth(), tue.getDate()+5);   // 주차 일요일
     const md = x => (x.getMonth()+1)+"/"+x.getDate();
-    return md(cWed)+" ~ "+md(cSun)+" 클리닉";
+    return md(mon)+" ~ "+md(sun)+" 주차";
   }
 
   /* ============================================================

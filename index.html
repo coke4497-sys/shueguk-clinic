@@ -244,9 +244,12 @@
         <label for="grade">학년</label>
         <select id="grade">
           <option value="">선택</option>
-          <option value="1">고1</option>
-          <option value="2">고2</option>
-          <option value="3">고3</option>
+          <option value="중1">중1</option>
+          <option value="중2">중2</option>
+          <option value="중3">중3</option>
+          <option value="고1">고1</option>
+          <option value="고2">고2</option>
+          <option value="고3">고3</option>
         </select>
         <p class="err-msg">학년을 선택해 주세요.</p>
       </div>
@@ -371,6 +374,9 @@
 
   let slotCap = 9;
   let slotCounts = {};
+  let tcounts = {};          // 강사별 시간대 정원 { '강사|시간대': n }
+  let teacherSlotMap = null; // 강사별 시간대 { 강사: [시간대] } — 설정 없으면 null
+  let globalSlots = [];      // 공통 시간대 (강사별 설정이 없는 강사용)
 
   // Apps Script 응답을 읽기 위한 JSONP 요청 (마감 여부 확인용)
   function jsonpRequest(params, onResult, onError){
@@ -483,18 +489,32 @@
         document.getElementById("f-studentId").classList.remove("invalid");
       });
     }
-    // 담당강사는 항상 보이며 선택 가능. 바꾸면 오류 표시 해제.
+    // 담당강사는 항상 보이며 선택 가능. 바꾸면 오류 표시 해제 + 그 강사의 시간대로 갱신.
     teacherSel.addEventListener("change", function(){
       document.getElementById("f-teacher").classList.remove("invalid");
+      buildTimeOptions(currentSlots());
+      applySlotAvailability();
     });
   })();
 
+  // 선택된 담당 강사의 시간대 목록 — 강사별 설정이 있으면 그 목록, 없으면 공통 시간대
+  function currentSlots(){
+    var t = document.getElementById("teacher").value.trim();
+    if (teacherSlotMap && teacherSlotMap[t] && teacherSlotMap[t].length) return teacherSlotMap[t];
+    return globalSlots;
+  }
+  // 이 시간대의 사용 인원 — 강사별 시간대를 쓰는 강사는 그 강사의 신청만 센다
+  function slotUsed(slot){
+    var t = document.getElementById("teacher").value.trim();
+    if (teacherSlotMap && teacherSlotMap[t] && teacherSlotMap[t].length) return tcounts[t + "|" + slot] || 0;
+    return slotCounts[slot] || 0;
+  }
   // 슬롯 정원 불러와 마감 시간대 비활성화
   function applySlotAvailability(){
     const sel = document.getElementById("clinic-time");
     Array.from(sel.options).forEach(opt => {
       if (!opt.value) return;
-      const used = slotCounts[opt.value] || 0;
+      const used = slotUsed(opt.value);
       if (used >= slotCap){
         opt.disabled = true;
         opt.textContent = opt.value + " (마감)";
@@ -523,14 +543,20 @@
   }
 
   // 이번 주 신청 가능 학년만 학년 선택지에 남긴다. 한 학년뿐이면 자동 선택.
+  //  '중2'/'고3' 형태 토큰과 옛 숫자('2'=고2) 형식 둘 다 받는다.
   function buildGradeOptions(grades){
     var sel = document.getElementById("grade");
     if (!sel || !Array.isArray(grades) || !grades.length) return;
+    var order = ['중1','중2','중3','고1','고2','고3'];
+    var toks = grades.map(function(g){ return /^[123]$/.test(String(g)) ? '고'+g : String(g); })
+      .filter(function(g){ return order.indexOf(g) > -1; })
+      .sort(function(a,b){ return order.indexOf(a)-order.indexOf(b); });
+    if (!toks.length) return;
     var cur = sel.value;
     sel.innerHTML = '<option value="">선택</option>'
-      + grades.map(function(g){ return '<option value="'+g+'">고'+g+'</option>'; }).join("");
-    if (grades.indexOf(cur) > -1) sel.value = cur;
-    else if (grades.length === 1) sel.value = grades[0];
+      + toks.map(function(g){ return '<option value="'+g+'">'+g+'</option>'; }).join("");
+    if (toks.indexOf(cur) > -1) sel.value = cur;
+    else if (toks.length === 1) sel.value = toks[0];
   }
 
   function loadSlots(){
@@ -539,8 +565,16 @@
       if (resp.open === false){ showClosed(); return; }  // 신청 중단 상태
       slotCap = resp.cap || 9;
       slotCounts = resp.counts || {};
-      if (Array.isArray(resp.slots)) buildTimeOptions(resp.slots);  // 교사가 고른 시간대로 갱신
-      buildGradeOptions(resp.grades);                               // 신청 가능 학년만 표시
+      tcounts = resp.tcounts || {};
+      globalSlots = Array.isArray(resp.slots) ? resp.slots : [];
+      // 강사별 시간대 설정 — 있으면 담당 강사에 따라 시간대 목록이 바뀐다
+      teacherSlotMap = null;
+      if (Array.isArray(resp.teachers) && resp.teachers.length){
+        teacherSlotMap = {};
+        resp.teachers.forEach(function(t){ if (t && t.teacher) teacherSlotMap[t.teacher] = t.slots || []; });
+      }
+      buildTimeOptions(currentSlots());                                 // 선택된 강사의 시간대로 갱신
+      buildGradeOptions(resp.gradeTokens || resp.grades);               // 신청 가능 학년만 표시
       applySlotAvailability();
     });
   }
@@ -635,11 +669,20 @@
       } else if (resp && resp.result === "full"){
         btn.disabled = false; btn.textContent = "신청하기";
         slotCounts[resp.slot] = resp.cap || slotCap; // 마감 반영
+        tcounts[teacher + "|" + resp.slot] = resp.cap || slotCap;
         applySlotAvailability();
         const f = document.getElementById("f-time");
         f.querySelector(".err-msg").textContent = "선택하신 시간은 마감되었어요. 다른 시간을 선택해 주세요.";
         f.classList.add("invalid");
         f.scrollIntoView({behavior:"smooth", block:"center"});
+      } else if (resp && resp.result === "bad_slot"){
+        // 담당 강사의 시간대가 아닌 시간을 고른 경우 (강사·시간대 설정이 바뀐 직후 등)
+        btn.disabled = false; btn.textContent = "신청하기";
+        loadSlots();
+        const ft = document.getElementById("f-time");
+        ft.querySelector(".err-msg").textContent = "선택하신 시간은 담당 강사님의 클리닉 시간이 아니에요. 시간을 다시 선택해 주세요.";
+        ft.classList.add("invalid");
+        ft.scrollIntoView({behavior:"smooth", block:"center"});
       } else if (resp && resp.result === "grade_closed"){
         // 이번 주 신청 대상 학년이 아닌 경우
         btn.disabled = false; btn.textContent = "신청하기";

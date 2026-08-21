@@ -36,6 +36,8 @@
   label{display:block;font-size:13px;color:var(--ink-soft);margin:16px 0 7px;font-weight:700;}
   input[type=text]{width:100%;padding:12px 13px;border:1.5px solid var(--line);border-radius:10px;font:inherit;font-size:15px;background:#fafbfa;color:var(--ink);}
   input[type=text]:focus{outline:none;border-color:var(--accent);background:#fff;}
+  select{width:100%;padding:12px 13px;border:1.5px solid var(--line);border-radius:10px;font:inherit;font-size:15px;background:#fafbfa;color:var(--ink);}
+  select:focus{outline:none;border-color:var(--accent);background:#fff;}
 
   .submit{width:100%;margin-top:18px;padding:15px;border:none;border-radius:12px;background:var(--accent);color:#fff;
     font-family:"Gowun Batang",serif;font-size:16px;font-weight:700;letter-spacing:1px;cursor:pointer;transition:opacity .15s;}
@@ -136,6 +138,23 @@
     <div class="status" id="slotStatus"></div>
   </section>
 
+  <!-- 강사별 시간대 -->
+  <section class="card">
+    <h2><span class="dot"></span>강사별 시간대</h2>
+    <p class="sub">강사를 골라 그 강사의 클리닉 시간대를 넣어두면, 학생 신청 폼에서 <b>그 강사를 담당으로 고른 학생에게는 그 시간대만</b> 보이고 정원(9명)도 강사별로 따로 셉니다.<br>
+      설정하지 않은 강사는 위의 공통 시간대를 그대로 씁니다. 시간대를 모두 지우면 그 강사는 다시 공통 시간대로 돌아가요.</p>
+    <div class="wk-note" id="tslotSummary">확인 중…</div>
+    <label for="tslotTeacher">강사 선택</label>
+    <select id="tslotTeacher" onchange="renderTslot()"><option value="">선택</option></select>
+    <div class="slot-list" id="tslotList" style="margin-top:12px;"><p class="muted">강사를 선택하세요.</p></div>
+    <div class="slot-addrow">
+      <input type="text" id="tslotNew" placeholder="예: 수 저녁 7:00-8:30" maxlength="40" />
+      <button type="button" class="slot-add" onclick="tslotAdd()">시간대 추가</button>
+    </div>
+    <button type="button" class="submit" id="tslotSaveBtn" onclick="tslotSave()">강사별 시간대 저장</button>
+    <div class="status" id="tslotStatus"></div>
+  </section>
+
   <!-- 배정 -->
   <section class="card">
     <h2><span class="dot"></span>학생 배정 · 신청 대상</h2>
@@ -222,7 +241,9 @@
         clinicOpen = (typeof d.open==='undefined') ? true : !!d.open;
         slotMaster = (d.allSlots||[]).slice();
         slotActive = (d.slots||[]).slice();
+        tslots = (d.teachers||[]).slice();
         renderOpenBtn(); renderSlots();
+        renderTslotSelect(); renderTslot(); renderTslotSummary();
         renderTargetCur(d.target||null);
       }).catch(function(){ document.getElementById('slotList').innerHTML='<p class="muted">설정을 불러오지 못했어요 — 인터넷 확인</p>'; });
   }
@@ -297,7 +318,75 @@
   }
   document.getElementById('slotNew').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addSlot(); } });
   function fetchJSON(url){ return fetch(url, {cache:'no-store'}).then(function(r){ return r.json(); }); }
-  function loadRoster(){ fetchJSON(REPORT_API+'?action=roster&t='+Date.now()).then(function(d){ if(d&&d.result==='success') ROSTER=d.students||[]; }).catch(function(){}); }
+
+  /* ===== 강사별 시간대 ===== */
+  // 신청 폼(index.html)의 담당 강사 목록과 동일 + 설정된 강사 + 명단의 담당강사
+  var TEACHER_LIST = ['이은지','김덕기','김지원','김현지','남주혜','우현정','정연주','배선주','이수경','이승연'];
+  var tslots = [];   // [{teacher, slots:[...]}]
+  function tslotOf(nm){ for(var i=0;i<tslots.length;i++) if(tslots[i].teacher===nm) return tslots[i]; return null; }
+  function tslotStatus(m,k){ var s=document.getElementById('tslotStatus'); s.textContent=m||''; s.className='status'+(k?(' '+k):''); }
+  function renderTslotSelect(){
+    var sel=document.getElementById('tslotTeacher');
+    var names={};
+    TEACHER_LIST.forEach(function(n){ names[n]=1; });
+    tslots.forEach(function(t){ names[t.teacher]=1; });
+    ROSTER.forEach(function(s){ var t=String(s.teacher||'').trim(); if(t) names[t]=1; });
+    var cur=sel.value;
+    sel.innerHTML='<option value="">선택</option>'+Object.keys(names).sort(function(a,b){ return a.localeCompare(b,'ko'); })
+      .map(function(n){ var t=tslotOf(n); return '<option value="'+esc(n)+'">'+esc(n)+'T'+(t?' — '+t.slots.length+'개 설정됨':'')+'</option>'; }).join('');
+    if(cur) sel.value=cur;
+  }
+  function renderTslotSummary(){
+    var el=document.getElementById('tslotSummary');
+    if(!tslots.length){ el.textContent='아직 강사별 설정이 없어요 — 모든 강사가 공통 시간대를 씁니다.'; return; }
+    el.innerHTML='강사별 시간대 사용 중: '+tslots.map(function(t){ return '<b>'+esc(t.teacher)+'T</b>('+t.slots.length+')'; }).join(' · ')
+      +'<br><span style="color:#9aa6a0">여기에 없는 강사는 공통 시간대를 씁니다.</span>';
+  }
+  function renderTslot(){
+    var nm=document.getElementById('tslotTeacher').value;
+    var box=document.getElementById('tslotList');
+    if(!nm){ box.innerHTML='<p class="muted">강사를 선택하세요.</p>'; return; }
+    var t=tslotOf(nm);
+    if(!t || !t.slots.length){
+      box.innerHTML='<p class="muted">'+esc(nm)+'T는 아직 설정이 없어요 — 학생에게는 공통 시간대가 보입니다.<br>아래에서 시간대를 추가하세요.</p>';
+      return;
+    }
+    box.innerHTML=t.slots.map(function(s,i){
+      return '<label class="slot-chk on">'+esc(s)+'<button type="button" class="rm" data-i="'+i+'" title="삭제">✕</button></label>';
+    }).join('');
+    box.querySelectorAll('button.rm').forEach(function(b){
+      b.addEventListener('click', function(e){
+        e.preventDefault();
+        t.slots.splice(+b.dataset.i,1);
+        if(!t.slots.length) tslots=tslots.filter(function(x){ return x!==t; });   // 모두 지우면 설정 해제 → 공통으로
+        renderTslot(); renderTslotSelect(); renderTslotSummary();
+        tslotStatus("변경됨 — '강사별 시간대 저장'을 눌러 반영하세요.");
+      });
+    });
+  }
+  function tslotAdd(){
+    var nm=document.getElementById('tslotTeacher').value;
+    if(!nm){ tslotStatus('먼저 강사를 선택하세요.','err'); return; }
+    var inp=document.getElementById('tslotNew'); var v=inp.value.trim();
+    if(!v){ inp.focus(); return; }
+    var t=tslotOf(nm);
+    if(!t){ t={teacher:nm, slots:[]}; tslots.push(t); }
+    if(t.slots.indexOf(v)>-1){ tslotStatus('이미 있는 시간대예요.','err'); return; }
+    t.slots.push(v); inp.value='';
+    renderTslot(); renderTslotSelect(); renderTslotSummary();
+    tslotStatus("추가됨 — '강사별 시간대 저장'을 눌러 반영하세요.");
+  }
+  function tslotSave(){
+    var btn=document.getElementById('tslotSaveBtn'); btn.disabled=true; var lb=btn.textContent; btn.textContent='저장 중…';
+    fetchJSON(CLINIC_API+'?action=setTeacherSlots&data='+encodeURIComponent(JSON.stringify(tslots))
+      +'&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
+      .then(function(d){ btn.disabled=false; btn.textContent=lb;
+        if(d&&d.result==='success'){ tslots=(d.teachers||tslots).slice(); renderTslotSelect(); renderTslot(); renderTslotSummary(); tslotStatus('✓ 저장됐어요. 학생 신청 폼에 바로 반영됩니다.','ok'); }
+        else tslotStatus('저장 실패: '+((d&&d.message)==='unauthorized'?'권한 없음':((d&&d.message)||'클리닉 백엔드 재배포 확인')),'err');
+      }).catch(function(){ btn.disabled=false; btn.textContent=lb; tslotStatus('저장 실패 — 인터넷 확인','err'); });
+  }
+  document.getElementById('tslotNew').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); tslotAdd(); } });
+  function loadRoster(){ fetchJSON(REPORT_API+'?action=roster&t='+Date.now()).then(function(d){ if(d&&d.result==='success'){ ROSTER=d.students||[]; renderTslotSelect(); } }).catch(function(){}); }
 
   /* ===== 배정 ===== */
   function setAssignStatus(m,k){ var s=document.getElementById('assignStatus'); s.textContent=m||''; s.className='status'+(k?(' '+k):''); }

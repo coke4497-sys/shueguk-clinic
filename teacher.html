@@ -81,7 +81,14 @@
   .bar-row:hover .lab{color:var(--accent-dark);}
 
   /* Week bar */
-  .weekbar{display:flex;align-items:center;gap:8px;margin:2px 0 16px;}
+  .weekbar{display:flex;align-items:center;gap:8px;margin:2px 0 12px;}
+  /* 개설된 클리닉 목록 — 누르면 그 강사 클리닉의 신청만 표시 */
+  .clinic-list{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;}
+  .clinic-btn{font:inherit;font-size:.88rem;background:var(--surface);border:1.5px solid var(--line);
+    border-radius:12px;padding:9px 14px;cursor:pointer;color:var(--ink);}
+  .clinic-btn .cnt{color:var(--ink-soft);font-size:.8rem;margin-left:6px;}
+  .clinic-btn.on{border-color:var(--accent);background:rgba(47,110,90,.08);color:var(--accent-dark,var(--accent));}
+  .clinic-btn.on b, .clinic-btn.on .cnt{color:inherit;}
   .weekbar select{flex:none;min-width:150px;font:inherit;font-size:.95rem;font-weight:600;color:var(--accent-dark);
     background:#fff;border:1px solid var(--line-strong);border-radius:10px;padding:10px 30px 10px 12px;
     -webkit-appearance:none;appearance:none;
@@ -237,6 +244,8 @@
     <span class="wk-hint" id="week-hint"></span>
   </div>
 
+  <div class="clinic-list" id="clinicList"></div>
+
   <div class="stats">
     <div class="stat"><div class="n" id="s-students">0</div><div class="l">신청 학생 수</div></div>
     <div class="stat"><div class="n" id="s-requests">0</div><div class="l">요청 건수</div></div>
@@ -252,7 +261,6 @@
 
   <div class="controls">
     <input type="text" id="q" placeholder="이름 검색" />
-    <select id="f-teacher"><option value="">전체 강사</option></select>
     <select id="f-time"><option value="">전체 시간</option></select>
     <select id="f-type"><option value="">전체 유형</option></select>
     <select id="f-area"><option value="">전체 영역</option></select>
@@ -340,6 +348,8 @@
   }
 
   let allRows = [];
+  let TEACHERS = [];      // 강사별 클리닉 설정 (배정 페이지에서 개설)
+  let selTeacher = "";    // 개설된 클리닉 목록에서 고른 강사 ('' = 전체)
   let view = "req"; // "req" | "stu"
   let authed = false;
   let teacherPw = "sh";   // 게이트 제거(2026-08-14) — 백엔드 검증용으로 내장
@@ -393,6 +403,7 @@
       if (!authed) enterApp();
       // 시간대 목록은 정렬 기준으로만 사용 (설정은 '클리닉 배정·현황' 페이지에서)
       if (Array.isArray(resp.allSlots)) allSlotsList = resp.allSlots.slice();
+      TEACHERS = Array.isArray(resp.teachers) ? resp.teachers : [];
       allRows = (resp.rows || [])
         .filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]))
         .filter(r => !isExcluded(r));
@@ -422,7 +433,6 @@
     fillSelectKV("f-week", "전체 주차", weekList.map(w=>({value:w, label:weekLabel(w)})));
     if (!weekInitialized && weekList.length){ $("f-week").value = weekList[0]; weekInitialized = true; }
     const times = uniq(allRows.map(r=>r["클리닉시간"])).sort((a,b)=>slotIndex(a)-slotIndex(b));
-    fillSelect("f-teacher", "전체 강사", uniq(allRows.map(rowTeacher)).sort((a,b)=>a.localeCompare(b,"ko")));
     fillSelect("f-time", "전체 시간", times);
     fillSelect("f-type", "전체 유형", uniq(allRows.map(r=>r["유형"])));
     fillSelect("f-area", "전체 영역", uniq(allRows.map(r=>r["영역"])));
@@ -444,11 +454,10 @@
     const q = $("q").value.trim();
     const fw = $("f-week").value;
     const ft = $("f-type").value, fa = $("f-area").value, fs = $("f-school").value, fm = $("f-time").value;
-    const ftc = $("f-teacher").value;
     return allRows.filter(r =>
       (!q || (r["이름"]||"").includes(q)) &&
       (!fw || rowWeekKey(r) === fw) &&
-      (!ftc || rowTeacher(r) === ftc) &&
+      (!selTeacher || rowTeacher(r) === selTeacher) &&
       (!fm || r["클리닉시간"] === fm) &&
       (!ft || r["유형"] === ft) &&
       (!fa || r["영역"] === fa) &&
@@ -456,7 +465,27 @@
     );
   }
 
+  // 개설된 클리닉 목록 — 강사별 설정이 있는 강사 + 이 주차에 신청이 있는 강사.
+  // 누르면 아래 통계·집계·목록이 전부 그 강사 클리닉의 신청만 보여준다.
+  function renderClinicList(){
+    const box = $("clinicList"); if (!box) return;
+    const fw = $("f-week").value;
+    const weekRows = allRows.filter(r => !fw || rowWeekKey(r) === fw);
+    const names = new Set(TEACHERS.map(t => t.teacher).filter(Boolean));
+    weekRows.forEach(r => names.add(rowTeacher(r)));
+    const list = [...names].sort((a,b)=>a.localeCompare(b,"ko"));
+    if (selTeacher && !names.has(selTeacher)) selTeacher = "";
+    const cntOf = t => new Set(weekRows.filter(r => rowTeacher(r) === t).map(studentKey)).size;
+    const total = new Set(weekRows.map(studentKey)).size;
+    box.innerHTML =
+      `<button type="button" class="clinic-btn${selTeacher===""?" on":""}" data-t=""><b>전체</b><span class="cnt">${total}명</span></button>` +
+      list.map(t => `<button type="button" class="clinic-btn${selTeacher===t?" on":""}" data-t="${esc(t)}"><b>${esc(t)}T 클리닉</b><span class="cnt">${cntOf(t)}명</span></button>`).join("");
+    box.querySelectorAll(".clinic-btn").forEach(b =>
+      b.addEventListener("click", () => { selTeacher = b.getAttribute("data-t") || ""; render(); }));
+  }
+
   function render(){
+    renderClinicList();
     const rows = currentFiltered();
     updateWeekNav();
 
@@ -587,7 +616,7 @@
   }
 
   // 이벤트
-  ["q","f-week","f-teacher","f-time","f-type","f-area","f-school"].forEach(id => $(id).addEventListener("input", render));
+  ["q","f-week","f-time","f-type","f-area","f-school"].forEach(id => $(id).addEventListener("input", render));
   $("week-prev").addEventListener("click", ()=> moveWeek(+1));
   $("week-next").addEventListener("click", ()=> moveWeek(-1));
   $("refresh").addEventListener("click", fetchData);

@@ -89,6 +89,17 @@
   .clinic-btn .cnt{color:var(--ink-soft);font-size:.8rem;margin-left:6px;}
   .clinic-btn.on{border-color:var(--accent);background:rgba(47,110,90,.08);color:var(--accent-dark,var(--accent));}
   .clinic-btn.on b, .clinic-btn.on .cnt{color:inherit;}
+  /* 클리어(완료) — 실제 등원해 클리닉을 진행한 신청 표시 */
+  .clr-btn{font:inherit;font-size:.76rem;font-weight:700;border:1.5px solid var(--line);background:#fff;
+    color:var(--accent);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap;}
+  .clr-btn:hover{border-color:var(--accent);}
+  .clr-btn.undo{color:var(--ink-soft);}
+  .done-mark{font-size:.74rem;font-weight:700;color:#1b8a3a;background:rgba(27,138,58,.12);
+    padding:2px 9px;border-radius:12px;white-space:nowrap;}
+  tr.done-row td{opacity:.5;}
+  tr.done-row td.clr-cell{opacity:1;}
+  .clr-cell{white-space:nowrap;} .clr-cell .done-mark{margin-right:6px;}
+  .stu.done .stu-req, .stu.done .stu-memo{opacity:.5;}
   .weekbar select{flex:none;min-width:150px;font:inherit;font-size:.95rem;font-weight:600;color:var(--accent-dark);
     background:#fff;border:1px solid var(--line-strong);border-radius:10px;padding:10px 30px 10px 12px;
     -webkit-appearance:none;appearance:none;
@@ -425,6 +436,33 @@
   }
 
   function studentKey(r){ return (r["이름"]||"") + "|" + (r["학교"]||"") + "|" + (r["전화뒤4"]||""); }
+  /* ── 클리어(완료) 처리 — 실제 등원해 클리닉을 진행한 신청 구분 ── */
+  function isDone(r){ return !!String(r["클리어"]||"").trim(); }
+  function apiJsonp(params, onDone){
+    const cb = "shuegukClr" + Date.now() + Math.floor(Math.random()*1e4);
+    const s = document.createElement("script");
+    window[cb] = function(resp){ window[cb] = undefined; if (s.parentNode) s.parentNode.removeChild(s); onDone(resp); };
+    s.onerror = function(){ window[cb] = undefined; if (s.parentNode) s.parentNode.removeChild(s); onDone(null); };
+    let q = "";
+    Object.keys(params).forEach(k => { q += "&" + k + "=" + encodeURIComponent(params[k]); });
+    s.src = DATA_URL + "?callback=" + cb + q + "&t=" + Date.now();
+    document.body.appendChild(s);
+  }
+  window.clearRows = function(btn){
+    const rows = JSON.parse(btn.getAttribute("data-rows") || "[]");
+    const clear = btn.getAttribute("data-clear") === "1";
+    if (!rows.length) return;
+    btn.disabled = true;
+    apiJsonp({ action:"setClear", pw: teacherPw, rows: JSON.stringify(rows), clear: clear ? "1" : "" }, function(resp){
+      if (!resp || resp.result !== "success"){
+        btn.disabled = false;
+        alert("완료 처리에 실패했어요. 인터넷 연결을 확인해 주세요. (안 되면 클리닉 백엔드 재배포 확인)");
+        return;
+      }
+      allRows.forEach(r => { if (rows.includes(r._row)) r["클리어"] = resp.mark || ""; });
+      render();
+    });
+  };
   // 담당강사 열이 빈 옛 신청 기록은 전부 이수경T의 클리닉 (2026-08-21 사용자 확인)
   function rowTeacher(r){ return String(r["담당강사"]||"").trim() || "이수경"; }
 
@@ -547,7 +585,8 @@
     const body = rows.map(r=>{
       const cls = TYPE_CLASS[r["유형"]] || "add";
       const cnt = r["질문개수"] ? ` <span style="color:var(--ink-soft);font-size:.78rem;">(${esc(r["질문개수"])})</span>` : "";
-      return `<tr>
+      const done = isDone(r);
+      return `<tr class="${done?'done-row':''}">
         <td class="when">${esc(shortTime(r["제출시각"]))}</td>
         <td class="who"><span class="nm">${esc(r["이름"])}</span><br><span class="meta">${esc(r["학교"])} · ${esc(r["전화뒤4"])}</span></td>
         <td class="area-cell">${esc(r["클리닉시간"])}</td>
@@ -555,10 +594,11 @@
         <td class="area-cell">${esc(r["영역"])}</td>
         <td class="content">${esc(r["구체내용"])}</td>
         <td class="memo">${esc(r["메모"])}</td>
+        <td class="clr-cell">${done?`<span class="done-mark" title="${esc(r["클리어"])}">완료</span>`:""}${r._row?`<button type="button" class="clr-btn${done?' undo':''}" data-rows="[${r._row}]" data-clear="${done?'':'1'}" onclick="clearRows(this)">${done?'취소':'클리어'}</button>`:""}</td>
       </tr>`;
     }).join("");
     $("list").innerHTML = `<div class="table-card"><div class="tbl-scroll"><table>
-      <thead><tr><th>시각</th><th>학생</th><th>클리닉</th><th>유형</th><th>영역</th><th>내용</th><th>메모</th></tr></thead>
+      <thead><tr><th>시각</th><th>학생</th><th>클리닉</th><th>유형</th><th>영역</th><th>내용</th><th>메모</th><th>완료</th></tr></thead>
       <tbody>${body}</tbody></table></div></div>`;
   }
 
@@ -578,11 +618,16 @@
           <div class="body"><div class="ct">${esc(r["구체내용"])}${cnt}</div>
           <div class="ar">${esc(r["영역"])}</div></div></div>`;
       }).join("");
-      return `<div class="stu">
+      const doneAll = reqs.every(isDone);
+      const rowIds = reqs.map(x=>x._row).filter(Boolean);
+      return `<div class="stu${doneAll?' done':''}">
         <div class="stu-head"><span class="nm">${esc(r0["이름"])}</span>
           <span class="slot">${esc(r0["클리닉시간"])}</span>
           <span class="meta">${esc(r0["학교"])} · ${esc(r0["전화뒤4"])}</span>
-          <span class="n">요청 ${reqs.length}건</span></div>
+          <span class="n">요청 ${reqs.length}건</span>
+          ${doneAll?'<span class="done-mark">완료</span>':''}
+          ${rowIds.length?`<button type="button" class="clr-btn${doneAll?' undo':''}" data-rows="[${rowIds.join(',')}]" data-clear="${doneAll?'':'1'}" onclick="clearRows(this)">${doneAll?'취소':'클리어'}</button>`:''}
+        </div>
         ${items}
         ${memo ? `<div class="stu-memo">메모: ${esc(memo)}</div>` : ""}
       </div>`;

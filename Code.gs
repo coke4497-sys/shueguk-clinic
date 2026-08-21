@@ -31,7 +31,8 @@ var SHEET_NAME = "응답";
 // 이 값은 서버(Apps Script)에만 있고 공개 페이지에는 노출되지 않습니다.
 var TEACHER_PASSWORD = "sh";
 
-var HEADERS = ["제출시각", "이름", "학교", "전화뒤4", "클리닉시간", "유형", "영역", "구체내용", "질문개수", "메모", "학년", "학생ID", "담당강사", "토큰"];
+var HEADERS = ["제출시각", "이름", "학교", "전화뒤4", "클리닉시간", "유형", "영역", "구체내용", "질문개수", "메모", "학년", "학생ID", "담당강사", "토큰", "클리어"];
+// '클리어': 실제 등원해 클리닉을 진행한 신청의 완료 표시(완료 일시, 빈값=미완료) — 신청 확인 페이지의 클리어 버튼
 // ※ '토큰' 열은 학생 개별 페이지(s.html)가 '내 클리닉 신청'을 찾을 때 쓰는 매칭 키입니다.
 //   기존 시트에 열이 없으면 ensureHeaders_()가 자동으로 뒤에 추가합니다.
 
@@ -579,6 +580,32 @@ function doGet(e) {
     return reply_(params.callback, { result: "success", eligible: ok, targetType: tt.type, open: isOpen_() });
   }
 
+  // 클리닉 완료(클리어) 처리 — ?action=setClear&rows=[시트행번호,...]&clear=1&pw=
+  //  실제 등원해 클리닉을 진행한 신청을 완료로 표시. clear 빈값 = 완료 취소.
+  if (params.action === "setClear") {
+    if (params.pw !== TEACHER_PASSWORD) {
+      return reply_(params.callback, { result: "error", message: "unauthorized" });
+    }
+    var rowsSel = [];
+    try { rowsSel = params.rows ? JSON.parse(params.rows) : []; } catch (e) { rowsSel = []; }
+    var mark = (params.clear === "1") ? Utilities.formatDate(new Date(), "Asia/Seoul", "yyyy-MM-dd HH:mm") : "";
+    var csh = getSheet_();
+    var cLast = csh.getLastRow();
+    var chead = csh.getRange(1, 1, 1, csh.getLastColumn()).getValues()[0].map(function (h) { return String(h || "").trim(); });
+    var ciC = chead.indexOf("클리어");
+    if (ciC < 0) return reply_(params.callback, { result: "error", message: "no_clear_col" });
+    var updated = 0;
+    (Array.isArray(rowsSel) ? rowsSel : []).forEach(function (rn) {
+      rn = parseInt(rn, 10);
+      if (!rn || rn < 2 || rn > cLast) return;
+      var rg = csh.getRange(rn, ciC + 1);
+      rg.setNumberFormat("@");
+      rg.setValue(mark);
+      updated++;
+    });
+    return reply_(params.callback, { result: "success", updated: updated, mark: mark });
+  }
+
   // 신청 받기 상태 조회
   if (params.action === "status") {
     return reply_(params.callback, { result: "success", open: isOpen_() });
@@ -616,8 +643,8 @@ function doGet(e) {
     var sheet = getSheet_();
     var values = sheet.getDataRange().getValues();
     var headers = values.shift() || [];
-    var rows = values.map(function (r) {
-      var o = {};
+    var rows = values.map(function (r, ri) {
+      var o = { _row: ri + 2 };   // 시트 행 번호 — 클리어(완료) 처리용
       headers.forEach(function (h, i) { o[h] = r[i]; });
       return o;
     });

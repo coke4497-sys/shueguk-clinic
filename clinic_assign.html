@@ -225,12 +225,60 @@
     loadClinicSettings();
   }
 
+  /* ── 수파베이스 미러 (2026-08-23 DB 이전) — 데이터를 읽을 때마다 신청 미러(clinic_requests)를
+   * 시트 내용으로 통째 교체하고, 설정 저장 시 설정 미러(clinic_settings)를 갱신. 실패 무해. */
+  var SB_REST = "https://bangdbhqpphqqdwcledg.supabase.co/rest/v1";
+  var SB_KEY = "sb_publishable_dE9d1KIbpgYaQkaS2MSrlg_-7SiRJuT";
+  function sbP2(n){ return ('0'+n).slice(-2); }
+  function sbNormTs(v){
+    var s = String(v == null ? '' : v).trim();
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s)) return s.slice(0, 16);
+    var tm = Date.parse(s);
+    if (isNaN(tm)) return s;
+    var d = new Date(tm + 9 * 3600000);
+    return d.getUTCFullYear()+'-'+sbP2(d.getUTCMonth()+1)+'-'+sbP2(d.getUTCDate())+' '+sbP2(d.getUTCHours())+':'+sbP2(d.getUTCMinutes());
+  }
+  function sbResyncClinic(rows){
+    try {
+      var H = { 'apikey': SB_KEY, 'Authorization': 'Bearer '+SB_KEY,
+                'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+      var body = (rows||[]).filter(function(r){ return (r['이름']||r['유형']||r['영역']||r['구체내용']); })
+        .map(function(r){
+          return { ts: sbNormTs(r['제출시각']), name: String(r['이름']||''), school: String(r['학교']||''),
+            phone: String(r['전화뒤4']||''), slot: String(r['클리닉시간']||''), rtype: String(r['유형']||''),
+            area: String(r['영역']||''), content: String(r['구체내용']||''),
+            qcount: String(r['질문개수']==null?'':r['질문개수']), memo: String(r['메모']||''),
+            grade: String(r['학년']||''), student_id: String(r['학생ID']||''),
+            teacher: String(r['담당강사']||''), token: String(r['토큰']||''), clear: sbNormTs(r['클리어']) };
+        });
+      fetch(SB_REST+'/clinic_requests?id=gt.0', { method:'DELETE', headers:H })
+        .then(function(){ return body.length ? fetch(SB_REST+'/clinic_requests', { method:'POST', headers:H, body: JSON.stringify(body) }) : null; })
+        .catch(function(e){ console.warn('클리닉 미러 재동기화 실패 — 일일 점검이 복구', e); });
+    } catch (e) {}
+  }
+  function sbClinicSettings(resp){
+    try {
+      if (!resp) return;
+      var st = ['open','slots','allSlots','teachers','target'].filter(function(k){ return resp[k] !== undefined; })
+        .map(function(k){ return { key:k, value: resp[k], updated_at: new Date().toISOString() }; });
+      if (!st.length) return;
+      fetch(SB_REST+'/clinic_settings?on_conflict=key', {
+        method:'POST',
+        headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer '+SB_KEY, 'Content-Type': 'application/json',
+                   'Prefer': 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(st)
+      }).catch(function(){});
+    } catch (e) {}
+  }
+
   /* ===== 신청 설정 (강사별 시간대·신청받기·대상) — 클리닉 백엔드 ===== */
   var GLOBAL_TARGET = null;   // 공통(옛) 대상 — 강사별 대상이 없는 강사에게 적용
   function loadClinicSettings(){
     fetchJSON(CLINIC_API+'?action=data&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
       .then(function(d){
         if(!d || d.result!=='success'){ document.getElementById('tslotSummary').textContent='설정을 불러오지 못했어요. (클리닉 백엔드 재배포 확인)'; return; }
+        sbResyncClinic(d.rows); sbClinicSettings(d);
         tslots = (d.teachers||[]).slice();
         GLOBAL_TARGET = d.target||null;
         renderTslotSelect(); renderTslot(); renderTslotSummary();
@@ -351,7 +399,7 @@
     fetchJSON(CLINIC_API+'?action=setTeacherSlots&data='+encodeURIComponent(JSON.stringify(tslots))
       +'&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
       .then(function(d){ btn.disabled=false; btn.textContent=lb;
-        if(d&&d.result==='success'){ tslots=(d.teachers||tslots).slice(); renderTslotSelect(); renderTslot(); renderTslotSummary(); tslotStatus('✓ 저장됐어요. 학생 신청 폼에 바로 반영됩니다.','ok'); }
+        if(d&&d.result==='success'){ tslots=(d.teachers||tslots).slice(); sbClinicSettings({teachers:tslots}); renderTslotSelect(); renderTslot(); renderTslotSummary(); tslotStatus('✓ 저장됐어요. 학생 신청 폼에 바로 반영됩니다.','ok'); }
         else tslotStatus('저장 실패: '+((d&&d.message)==='unauthorized'?'권한 없음':((d&&d.message)||'클리닉 백엔드 재배포 확인')),'err');
       }).catch(function(){ btn.disabled=false; btn.textContent=lb; tslotStatus('저장 실패 — 인터넷 확인','err'); });
   }
@@ -384,6 +432,7 @@
           .then(function(t){
             if(t && t.result==='success'){
               if(t.teachers) tslots=(t.teachers||tslots).slice();
+              sbClinicSettings({teachers:tslots});
               renderTslotSelect(); renderTslotSummary(); renderTargetCurBox();
               setAssignStatus('✓ '+tNm+'T 클리닉 배정 + 신청 대상 설정 완료 — '+sel.summary, 'ok');
             }
@@ -480,6 +529,7 @@
       if(rRes && rRes.result==='success') ROSTER=rRes.students||ROSTER;
       if(!aRes || aRes.result!=='success'){ body.innerHTML='<p class="muted">배정 내역을 불러오지 못했어요.</p>'; return; }
       if(!sRes || sRes.result!=='success'){ body.innerHTML='<p class="muted">클리닉 신청 기록을 불러오지 못했어요. (권한/배포 확인)</p>'; return; }
+      sbResyncClinic(sRes.rows); sbClinicSettings(sRes);
       ASSIGNS = aRes.assignments||[];
       STAT = { curWeek: weekKeyOf(new Date()), rows: sRes.rows||[] };
       renderStatusBody();

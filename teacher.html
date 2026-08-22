@@ -390,6 +390,59 @@
     $("topbar").style.display = "flex";
   }
 
+  /* ── 수파베이스 미러 재동기화 (2026-08-23 DB 이전) — 교사 화면이 목록을 읽을 때마다
+   * 신청 미러(clinic_requests)를 시트 내용으로 통째 교체하고 설정 미러(clinic_settings)를
+   * 갱신한다(클리어·삭제 반영). 실패해도 무해 — 일일 점검이 복구. */
+  const SB_REST = "https://bangdbhqpphqqdwcledg.supabase.co/rest/v1";
+  const SB_KEY = "sb_publishable_dE9d1KIbpgYaQkaS2MSrlg_-7SiRJuT";
+  function sbP2(n){ return String(n).padStart(2, "0"); }
+  function sbNormTs(v){
+    const s = String(v == null ? "" : v).trim();
+    if (!s) return "";
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s)) return s.slice(0, 16);
+    const tm = Date.parse(s);
+    if (isNaN(tm)) return s;
+    const d = new Date(tm + 9 * 3600000);
+    return d.getUTCFullYear() + "-" + sbP2(d.getUTCMonth()+1) + "-" + sbP2(d.getUTCDate()) +
+           " " + sbP2(d.getUTCHours()) + ":" + sbP2(d.getUTCMinutes());
+  }
+  function sbClinicRow(r){
+    return { ts: sbNormTs(r["제출시각"]), name: String(r["이름"] || ""), school: String(r["학교"] || ""),
+      phone: String(r["전화뒤4"] || ""), slot: String(r["클리닉시간"] || ""), rtype: String(r["유형"] || ""),
+      area: String(r["영역"] || ""), content: String(r["구체내용"] || ""),
+      qcount: String(r["질문개수"] == null ? "" : r["질문개수"]), memo: String(r["메모"] || ""),
+      grade: String(r["학년"] || ""), student_id: String(r["학생ID"] || ""),
+      teacher: String(r["담당강사"] || ""), token: String(r["토큰"] || ""), clear: sbNormTs(r["클리어"]) };
+  }
+  function sbResyncClinic(rows){
+    try {
+      const H = { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY,
+                  "Content-Type": "application/json", "Prefer": "return=minimal" };
+      const body = (rows || [])
+        .filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]))
+        .map(sbClinicRow);
+      fetch(SB_REST + "/clinic_requests?id=gt.0", { method: "DELETE", headers: H })
+        .then(() => body.length ? fetch(SB_REST + "/clinic_requests", { method: "POST", headers: H, body: JSON.stringify(body) }) : null)
+        .catch(e => console.warn("클리닉 미러 재동기화 실패 — 일일 점검이 복구", e));
+    } catch (e) {}
+  }
+  function sbClinicSettings(resp){
+    try {
+      if (!resp) return;
+      const st = ["open", "slots", "allSlots", "teachers", "target"]
+        .filter(k => resp[k] !== undefined)
+        .map(k => ({ key: k, value: resp[k], updated_at: new Date().toISOString() }));
+      if (!st.length) return;
+      fetch(SB_REST + "/clinic_settings?on_conflict=key", {
+        method: "POST",
+        headers: { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json",
+                   "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(st)
+      }).catch(() => {});
+    } catch (e) {}
+  }
+  let sbRawRows = [];   // 재동기화용 원본 행 (클리어 갱신 반영)
+
   function fetchData(){
     if (authed){ setState("신청 현황을 불러오는 중…", false); $("refresh").disabled = true; }
     const cb = "shuegukCb" + Date.now();
@@ -412,6 +465,9 @@
       // 시간대 목록은 정렬 기준으로만 사용 (설정은 '클리닉 배정·현황' 페이지에서)
       if (Array.isArray(resp.allSlots)) allSlotsList = resp.allSlots.slice();
       TEACHERS = Array.isArray(resp.teachers) ? resp.teachers : [];
+      sbRawRows = resp.rows || [];
+      sbResyncClinic(sbRawRows);
+      sbClinicSettings(resp);
       allRows = (resp.rows || [])
         .filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]))
         .filter(r => !isExcluded(r));
@@ -457,6 +513,7 @@
         return;
       }
       allRows.forEach(r => { if (rows.includes(r._row)) r["클리어"] = resp.mark || ""; });
+      sbResyncClinic(sbRawRows);   // 클리어 변경을 미러에도 반영 (allRows 항목은 sbRawRows와 같은 객체)
       render();
     });
   };

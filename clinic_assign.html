@@ -257,6 +257,28 @@
         .catch(function(e){ console.warn('클리닉 미러 재동기화 실패 — 일일 점검이 복구', e); });
     } catch (e) {}
   }
+  function sbYmdNorm(v){
+    var s = String(v == null ? '' : v).trim();
+    if (!s || /^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    var tm = Date.parse(s);
+    if (isNaN(tm)) return s;
+    var d = new Date(tm + 9 * 3600000);
+    return d.getUTCFullYear()+'-'+sbP2(d.getUTCMonth()+1)+'-'+sbP2(d.getUTCDate());
+  }
+  /* 배정 미러 재동기화 — assignList(tool 전체) 응답으로 그 도구의 미러(assignments)를 통째 교체 (s.html이 읽음) */
+  function sbResyncAssign(tool, list){
+    try {
+      var H = { 'apikey': SB_KEY, 'Authorization': 'Bearer '+SB_KEY,
+                'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+      var body = (list||[]).map(function(a){
+        return { seq: a.rowIndex||0, date: sbYmdNorm(a.date), tool: String(a.tool||tool), item: String(a.item||''),
+                 type: String(a.type||''), target: String(a.target||''), due: sbYmdNorm(a.due), memo: String(a.memo||'') };
+      });
+      fetch(SB_REST+'/assignments?tool=eq.'+encodeURIComponent(tool), { method:'DELETE', headers:H })
+        .then(function(){ return body.length ? fetch(SB_REST+'/assignments', { method:'POST', headers:H, body: JSON.stringify(body) }) : null; })
+        .catch(function(e){ console.warn('배정 미러 재동기화 실패 — 일일 점검이 복구', e); });
+    } catch (e) {}
+  }
   function sbClinicSettings(resp){
     try {
       if (!resp) return;
@@ -456,6 +478,7 @@
       .then(function(d){
         if(!d || d.result!=='success'){ box.innerHTML='<p class="muted">배정 내역을 불러오지 못했어요.</p>'; return; }
         ASSIGNS = d.assignments||[];
+        sbResyncAssign(TOOL, ASSIGNS);
         renderAssignListBox();
       }).catch(function(){ box.innerHTML='<p class="muted">배정 내역을 불러오지 못했어요.</p>'; });
   }

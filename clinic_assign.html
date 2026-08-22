@@ -39,7 +39,7 @@
   select{width:100%;padding:12px 13px;border:1.5px solid var(--line);border-radius:10px;font:inherit;font-size:15px;background:#fafbfa;color:var(--ink);}
   select:focus{outline:none;border-color:var(--accent);background:#fff;}
 
-  .submit{width:100%;margin-top:18px;padding:15px;border:none;border-radius:12px;background:var(--accent);color:#fff;
+  .submit{width:100%;margin-top:18px;padding:15px;border:none;border-radius:12px;background:#F0CFC7;color:#8E5147;   /* 클리닉 포인트 = 연핑크 (2026-08-22) */
     font-family:"Gowun Batang",serif;font-size:16px;font-weight:700;letter-spacing:1px;cursor:pointer;transition:opacity .15s;}
   .submit:active{opacity:.85;} .submit:disabled{background:#9fb3aa;cursor:default;}
   .status{font-size:13px;margin-top:12px;min-height:1.2em;color:var(--ink-soft);text-align:center;}
@@ -132,7 +132,7 @@
     <div class="wk-note" id="tslotSummary">확인 중…</div>
     <label for="tslotTeacher">강사 선택</label>
     <select id="tslotTeacher" onchange="pageTeacherChanged()"><option value="">선택</option></select>
-    <button type="button" class="submit" id="tslotOpenBtn" onclick="tslotToggleOpen()" style="background:#5a8275;display:none;"></button>
+    <button type="button" class="submit" id="tslotOpenBtn" onclick="tslotToggleOpen()" style="background:#F0CFC7;display:none;"></button>
     <div class="slot-list" id="tslotList" style="margin-top:12px;"><p class="muted">강사를 선택하세요.</p></div>
     <div class="slot-addrow">
       <input type="text" id="tslotNew" placeholder="예: 수 저녁 7:00-8:30" maxlength="40" />
@@ -160,7 +160,7 @@
   <section class="card" id="statusCard" style="display:none;">
     <h2><span class="dot"></span>신청 현황</h2>
     <p class="sub">배정된 학생과 이번 주(화요일 오픈 · 수~일 진행) 클리닉 신청을 대조합니다. (이름+학교 기준)</p>
-    <button type="button" class="submit" id="statusBtn" onclick="loadStatus()" style="background:#5a8275;">현황 불러오기 / 새로고침</button>
+    <button type="button" class="submit" id="statusBtn" onclick="loadStatus()" style="background:#F0CFC7;">현황 불러오기 / 새로고침</button>
     <div id="statusBody" style="margin-top:16px;"></div>
   </section>
 </main>
@@ -372,7 +372,7 @@
     b.style.display='';
     var open = t.open !== false;
     b.textContent = open ? '🟢 '+t.teacher+'T 신청 받는 중 — 누르면 중단' : '‖ '+t.teacher+'T 신청 중단됨 — 누르면 다시 받기';
-    b.style.background = open ? '#5a8275' : '#b07d2b';
+    b.style.background = open ? '#F0CFC7' : '#EAD1A5';
   }
   function tslotToggleOpen(){
     var nm=document.getElementById('tslotTeacher').value;

@@ -416,11 +416,13 @@
         qcount: String(r.count || ""), memo: p.memo || "", grade: sbGradeKey(p.grade),
         student_id: String(p.studentId || ""), teacher: p.teacher || "",
         token: String(p.token || ""), clear: "" }));
-      fetch(SB_REST + "/clinic_requests", {
+      // 표에 직접 넣지 않고 '넣기 전용' 함수를 부른다 — 학생이 여는 페이지라
+      // 공개 키에 표 권한을 열어 둘 수 없다(013 마이그레이션, 2026-08-25)
+      fetch(SB_REST + "/rpc/mirror_clinic_requests", {
         method: "POST",
         headers: { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY,
-                   "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify(body)
+                   "Content-Type": "application/json" },
+        body: JSON.stringify({ p: body })
       }).catch(function(e){ console.warn("클리닉 신청 미러 실패 — 교사 화면 열람 시 복구", e); });
     } catch (e) {}
   }

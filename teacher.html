@@ -89,6 +89,8 @@
   .clinic-btn .cnt{color:var(--ink-soft);font-size:.8rem;margin-left:6px;}
   .clinic-btn.on{border-color:var(--accent);background:rgba(47,110,90,.08);color:var(--accent-dark,var(--accent));}
   .clinic-btn.on b, .clinic-btn.on .cnt{color:inherit;}
+  /* 원본(시트)이 오기 전 — 완료 버튼 자리 표시 */
+  .clr-wait{color:var(--ink-soft,#8A968F);font-size:.9rem;letter-spacing:.08em;cursor:default;}
   /* 완료/미완료 토글 — 실제 등원해 클리닉을 진행한 신청 표시. 기본 미완료, 누르면 완료 */
   .st-toggle{font:inherit;font-size:.76rem;font-weight:700;border:1.5px solid rgba(176,125,43,.4);
     background:rgba(176,125,43,.12);color:#9a5b2b;border-radius:14px;padding:3px 12px;cursor:pointer;white-space:nowrap;}
@@ -506,9 +508,50 @@
     } catch (e) {}
   }
   let sbRawRows = [];   // 재동기화용 원본 행 (클리어 갱신 반영)
+  /* 원본(클리닉 시트)이 도착했는가 / 미러로 먼저 그렸는가.
+   * 시트 조회는 3.4~5.2초가 걸려서 그동안 화면이 비어 있었다(2026-08-26 실측).
+   * 미러(clinic_requests)에 같은 내용이 있으므로 그걸로 먼저 그리고 원본은 뒤에서 받는다.
+   * 완료(클리어) 처리는 시트의 행 번호(_row)가 있어야 하므로 원본이 오기 전엔 버튼을 감춘다. */
+  let SHEET_READY = false, FAST_DRAWN = false;
+
+  /* 미러로 먼저 그리기 — 원본이 오면 그쪽이 이깁니다(SHEET_READY). 실패해도 무해. */
+  function sbLoadFast(){
+    const H = { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY };
+    const q = "/clinic_requests?select=ts,name,school,phone,slot,rtype,area,content,qcount,memo,grade,student_id,teacher,token,clear&order=id.asc&limit=5000";
+    Promise.all([
+      fetch(SB_REST + q, { headers: H, cache: "no-store" })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error("sb " + r.status))),
+      fetch(SB_REST + "/clinic_settings?select=key,value", { headers: H, cache: "no-store" })
+        .then(r => r.ok ? r.json() : []).catch(() => [])
+    ]).then(function(res){
+      const rows = res[0], set = res[1];
+      if (SHEET_READY || !rows.length) return;      // 원본이 이미 왔으면 건드리지 않는다
+      const cfg = {}; (set || []).forEach(c => { cfg[c.key] = c.value; });
+      if (Array.isArray(cfg.allSlots)) allSlotsList = cfg.allSlots.slice();
+      if (Array.isArray(cfg.teachers)) TEACHERS = cfg.teachers;
+      allRows = rows.map(r => ({
+        "제출시각": r.ts, "이름": r.name, "학교": r.school, "전화뒤4": r.phone,
+        "클리닉시간": r.slot, "유형": r.rtype, "영역": r.area, "구체내용": r.content,
+        "질문개수": r.qcount, "메모": r.memo, "학년": r.grade, "학생ID": r.student_id,
+        "담당강사": r.teacher, "토큰": r.token, "클리어": r.clear
+        // _row(시트 행 번호)는 원본이 와야 안다 — 그때까지 완료 버튼은 안 보인다
+      })).filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]))
+         .filter(r => !isExcluded(r));
+      FAST_DRAWN = true;
+      setState("", false);
+      $("updated").textContent = "원본 확인 중…";
+      buildFilters();
+      render();
+    }).catch(function(){ /* 실패해도 무해 — 원본 조회가 화면을 그린다 */ });
+  }
 
   function fetchData(){
-    if (authed){ setState("신청 현황을 불러오는 중…", false); $("refresh").disabled = true; }
+    if (authed){
+      // 미러로 이미 그려 놨으면 화면을 비우지 않고 위에만 알린다
+      if (FAST_DRAWN) $("updated").textContent = "원본 확인 중…";
+      else setState("신청 현황을 불러오는 중…", false);
+      $("refresh").disabled = true;
+    }
     const cb = "shuegukCb" + Date.now();
     const script = document.createElement("script");
     window[cb] = function(resp){
@@ -529,6 +572,7 @@
       // 시간대 목록은 정렬 기준으로만 사용 (설정은 '클리닉 배정·현황' 페이지에서)
       if (Array.isArray(resp.allSlots)) allSlotsList = resp.allSlots.slice();
       TEACHERS = Array.isArray(resp.teachers) ? resp.teachers : [];
+      SHEET_READY = true;
       sbRawRows = resp.rows || [];
       sbResyncClinic(sbRawRows);
       sbClinicSettings(resp);
@@ -712,7 +756,7 @@
         <td class="area-cell">${esc(r["영역"])}</td>
         <td class="content">${esc(r["구체내용"])}</td>
         <td class="memo">${esc(r["메모"])}</td>
-        <td class="clr-cell">${r._row?`<button type="button" class="st-toggle${done?' done':''}" title="${done?esc(r["클리어"])+' 완료 — 누르면 미완료로':'누르면 완료 처리'}" data-rows="[${r._row}]" data-clear="${done?'':'1'}" onclick="clearRows(this)">${done?'완료':'미완료'}</button>`:""}</td>
+        <td class="clr-cell">${!r._row?`<span class="clr-wait" title="원본을 불러오는 중이에요 — 잠시 뒤에 누를 수 있어요">…</span>`:`<button type="button" class="st-toggle${done?' done':''}" title="${done?esc(r["클리어"])+' 완료 — 누르면 미완료로':'누르면 완료 처리'}" data-rows="[${r._row}]" data-clear="${done?'':'1'}" onclick="clearRows(this)">${done?'완료':'미완료'}</button>`}</td>
       </tr>`;
     }).join("");
     $("list").innerHTML = `<div class="table-card"><div class="tbl-scroll"><table>
@@ -809,6 +853,7 @@
 
   // 비밀번호 게이트 제거 — 바로 데이터 로드 (실패 시에만 게이트 표시)
   enterApp();
+  sbLoadFast();   // 미러로 먼저 그린다 (원본이 오면 그쪽으로 바뀐다)
   fetchData();
 </script>
 </body>

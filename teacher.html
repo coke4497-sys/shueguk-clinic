@@ -611,9 +611,30 @@
       sbRawRows = resp.rows || [];
       sbResyncClinic(sbRawRows);
       sbClinicSettings(resp);
-      allRows = (resp.rows || [])
+      const sheetRows = (resp.rows || [])
         .filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]))
         .filter(r => !isExcluded(r));
+      if (FAST_DRAWN && allRows.length){
+        /* 원본(수파베이스)으로 그린 화면을 유지한다 (2026-08-26 원본 전환) — 시트 사본은
+         * 완료(클리어) 버튼용 행번호(_row)만 제공. 짝은 제출시각·이름·시간대·유형·내용으로
+         * 잇는다(sbClinicClearPatch와 같은 기준). 사본에 없는 신청은 완료 버튼이 잠긴다. */
+        const keyOf = r => sbNormTs(r["제출시각"]) + "|" + String(r["이름"]||"") + "|" +
+                           String(r["클리닉시간"]||"") + "|" + String(r["유형"]||"") + "|" + String(r["구체내용"]||"");
+        const by = {};
+        sheetRows.forEach(r => { const k = keyOf(r); (by[k] = by[k] || []).push(r); });
+        let unmatched = 0;
+        allRows.forEach(r => {
+          const m = by[keyOf(r)];
+          if (m && m.length) r._row = m.shift()._row;
+          else unmatched++;
+        });
+        let sheetOnly = 0;
+        Object.keys(by).forEach(k => { sheetOnly += by[k].length; });
+        if (unmatched + sheetOnly)
+          console.warn("클리닉 신청 — 원본과 시트 사본 " + (unmatched + sheetOnly) + "건 차이 (원본=수파베이스, 일일 점검이 보고)");
+      } else {
+        allRows = sheetRows;   // 원본 화면이 없으면(미러 조회 실패) 시트로 그린다
+      }
       $("updated").textContent = "업데이트 " + new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
       setState("", false);
       buildFilters();
@@ -792,7 +813,7 @@
         <td class="area-cell">${esc(r["영역"])}</td>
         <td class="content">${esc(r["구체내용"])}</td>
         <td class="memo">${esc(r["메모"])}</td>
-        <td class="clr-cell">${!r._row?`<span class="clr-wait" title="원본을 불러오는 중이에요 — 잠시 뒤에 누를 수 있어요">…</span>`:`<button type="button" class="st-toggle${done?' done':''}" title="${done?esc(r["클리어"])+' 완료 — 누르면 미완료로':'누르면 완료 처리'}" data-rows="[${r._row}]" data-clear="${done?'':'1'}" onclick="clearRows(this)">${done?'완료':'미완료'}</button>`}</td>
+        <td class="clr-cell">${!r._row?`<span class="clr-wait" title="시트 사본 확인 중 — 사본에 없는 신청은 완료 버튼이 잠겨요 (일일 점검이 보고)">…</span>`:`<button type="button" class="st-toggle${done?' done':''}" title="${done?esc(r["클리어"])+' 완료 — 누르면 미완료로':'누르면 완료 처리'}" data-rows="[${r._row}]" data-clear="${done?'':'1'}" onclick="clearRows(this)">${done?'완료':'미완료'}</button>`}</td>
       </tr>`;
     }).join("");
     $("list").innerHTML = `<div class="table-card"><div class="tbl-scroll"><table>

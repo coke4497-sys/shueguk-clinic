@@ -616,18 +616,37 @@
   }
   function looseSchool(a,b){ var na=norm(a), nb=norm(b); if(!na||!nb) return false; return na.indexOf(nb)>=0 || nb.indexOf(na)>=0; }
 
+  /* 신청 기록의 원본은 수파베이스(2026-08-26, 019) — 현황도 원본에서 직접 읽는다.
+   * 실패하면 옛 백엔드(action=data, 시트) 폴백. 응답 모양은 시트 행과 같은 한글 키로 맞춘다. */
+  function sbSignRows(){
+    return fetch(SB_REST + '/clinic_requests?select=ts,name,school,phone,slot,rtype,area,content,qcount,memo,grade,student_id,teacher,token,clear&order=id.asc&limit=5000',
+        { headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }, cache: 'no-store' })
+      .then(function(r){ if(!r.ok) throw new Error('sb '+r.status); return r.json(); })
+      .then(function(rows){
+        return rows.map(function(r){
+          return { '제출시각': r.ts, '이름': r.name, '학교': r.school, '전화뒤4': r.phone,
+                   '클리닉시간': r.slot, '유형': r.rtype, '영역': r.area, '구체내용': r.content,
+                   '질문개수': r.qcount, '메모': r.memo, '학년': r.grade, '학생ID': r.student_id,
+                   '담당강사': r.teacher, '토큰': r.token, '클리어': r.clear };
+        });
+      });
+  }
   function loadStatus(){
     var body=document.getElementById('statusBody');
     body.innerHTML='<p class="muted">현황 불러오는 중…</p>';
     var pAssign = fetchJSON(REPORT_API+'?action=assignList&pw='+encodeURIComponent(SERVER_PW)+'&tool='+encodeURIComponent(TOOL)+'&t='+Date.now());
-    var pSign   = fetchJSON(CLINIC_API+'?action=data&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now());
+    var pSign   = sbSignRows().then(function(rows){ return { result:'success', rows: rows, __origin: true }; })
+      .catch(function(e){
+        console.warn('수파베이스 신청 조회 실패 — 기존 백엔드(시트)로 폴백', e);
+        return fetchJSON(CLINIC_API+'?action=data&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now());
+      });
     var pRoster = ROSTER.length ? Promise.resolve({result:'success',students:ROSTER}) : fetchJSON(REPORT_API+'?action=roster&t='+Date.now());
     Promise.all([pAssign,pSign,pRoster]).then(function(res){
       var aRes=res[0], sRes=res[1], rRes=res[2];
       if(rRes && rRes.result==='success') ROSTER=rRes.students||ROSTER;
       if(!aRes || aRes.result!=='success'){ body.innerHTML='<p class="muted">배정 내역을 불러오지 못했어요.</p>'; return; }
       if(!sRes || sRes.result!=='success'){ body.innerHTML='<p class="muted">클리닉 신청 기록을 불러오지 못했어요. (권한/배포 확인)</p>'; return; }
-      sbResyncClinic(sRes.rows); sbClinicSettings(sRes);
+      if(!sRes.__origin){ sbResyncClinic(sRes.rows); sbClinicSettings(sRes); }   // 폴백일 때만 종전 대조·설정 미러
       ASSIGNS = aRes.assignments||[];
       STAT = { curWeek: weekKeyOf(new Date()), rows: sRes.rows||[] };
       renderStatusBody();

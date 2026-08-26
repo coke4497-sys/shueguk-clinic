@@ -309,21 +309,35 @@
   var T_PW = 'shg_FCePWvnawH44SV8kYB9BHRKi6aag';
   var tok = null, until = 0, pending = null;
   var raw = window.fetch.bind(window);
+  var TOK_LS = 'sb_teacher_tok_v1';   // 받아 둔 신분증은 브라우저에 남겨 다음 페이지에서 다시 받지 않는다(1시간짜리)
 
+  function cachedTok(){
+    try {
+      var c = JSON.parse(localStorage.getItem(TOK_LS) || 'null');
+      if (c && c.t && c.u > Date.now()){ tok = c.t; until = c.u; return true; }
+    } catch(e){}
+    return false;
+  }
   function auth(){
     if (tok && Date.now() < until) return Promise.resolve(tok);
+    if (cachedTok()) return Promise.resolve(tok);
     if (pending) return pending;
-    pending = raw(SB_URL + '/auth/v1/token?grant_type=password', {
+    var req = raw(SB_URL + '/auth/v1/token?grant_type=password', {
       method: 'POST',
       headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: T_ID, password: T_PW })
     }).then(function(r){ return r.json(); }).then(function(d){
-      pending = null;
       if (!d || !d.access_token) throw new Error('teacher auth');
       tok = d.access_token;
       until = Date.now() + Math.max(60, (d.expires_in || 3600) - 300) * 1000;   // 만료 5분 전에 다시 받는다
+      try { localStorage.setItem(TOK_LS, JSON.stringify({ t: tok, u: until })); } catch(e){}
       return tok;
-    }, function(e){ pending = null; throw e; });
+    });
+    /* 로그인이 멈춰 있으면 이 아래 모든 조회가 함께 멈춘다 — 10초를 넘기면 실패로 보고
+     * 그 조회는 예전 방식(공개 키)으로 내보낸다. 다음 호출 때 다시 받는다. */
+    var late = new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('teacher auth timeout')); }, 10000); });
+    pending = Promise.race([req, late]).then(function(t){ pending = null; return t; },
+                                            function(e){ pending = null; throw e; });
     return pending;
   }
   function withAuth(url, opts, t){
@@ -343,6 +357,7 @@
       return raw(url, withAuth(url, opts, t)).then(function(r){
         if (r.status !== 401) return r;
         tok = null; until = 0;                       // 만료가 겹쳤으면 한 번만 다시 받아 재시도
+        try { localStorage.removeItem(TOK_LS); } catch(e){}
         return auth().then(function(t2){ return raw(url, withAuth(url, opts, t2)); });
       });
     }, function(){ return raw(url, opts); });

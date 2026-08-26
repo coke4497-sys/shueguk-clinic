@@ -318,22 +318,18 @@
     var d = new Date(tm + 9 * 3600000);
     return d.getUTCFullYear()+'-'+sbP2(d.getUTCMonth()+1)+'-'+sbP2(d.getUTCDate())+' '+sbP2(d.getUTCHours())+':'+sbP2(d.getUTCMinutes());
   }
+  /* 신청의 원본은 이제 수파베이스(2026-08-26, 019 마이그레이션) — 시트 내용으로 통째
+   * 교체하면 방금 들어온 신청·클리어가 옛 시트 값으로 되돌아간다. 대조해 콘솔에만 알린다. */
   function sbResyncClinic(rows){
     try {
-      var H = { 'apikey': SB_KEY, 'Authorization': 'Bearer '+SB_KEY,
-                'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
-      var body = (rows||[]).filter(function(r){ return (r['이름']||r['유형']||r['영역']||r['구체내용']); })
-        .map(function(r){
-          return { ts: sbNormTs(r['제출시각']), name: String(r['이름']||''), school: String(r['학교']||''),
-            phone: String(r['전화뒤4']||''), slot: String(r['클리닉시간']||''), rtype: String(r['유형']||''),
-            area: String(r['영역']||''), content: String(r['구체내용']||''),
-            qcount: String(r['질문개수']==null?'':r['질문개수']), memo: String(r['메모']||''),
-            grade: String(r['학년']||''), student_id: String(r['학생ID']||''),
-            teacher: String(r['담당강사']||''), token: String(r['토큰']||''), clear: sbNormTs(r['클리어']) };
-        });
-      fetch(SB_REST+'/clinic_requests?id=gt.0', { method:'DELETE', headers:H })
-        .then(function(){ return body.length ? fetch(SB_REST+'/clinic_requests', { method:'POST', headers:H, body: JSON.stringify(body) }) : null; })
-        .catch(function(e){ console.warn('클리닉 미러 재동기화 실패 — 일일 점검이 복구', e); });
+      var H = { 'apikey': SB_KEY, 'Authorization': 'Bearer '+SB_KEY, 'Prefer': 'count=exact' };
+      fetch(SB_REST+'/clinic_requests?select=id&limit=1', { method:'HEAD', headers:H })
+        .then(function(r){
+          var total = parseInt(String(r.headers.get('content-range')||'').split('/')[1], 10);
+          if (isNaN(total)) return;
+          var sheetN = (rows||[]).filter(function(r2){ return (r2['이름']||r2['유형']||r2['영역']||r2['구체내용']); }).length;
+          if (sheetN !== total) console.warn('클리닉 신청 — 시트 사본과 ' + Math.abs(total-sheetN) + '건 차이 (원본=수파베이스, 일일 점검이 보고)');
+        }).catch(function(){});
     } catch (e) {}
   }
   function sbYmdNorm(v){

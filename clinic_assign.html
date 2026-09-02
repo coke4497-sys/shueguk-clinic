@@ -70,6 +70,18 @@
   .pchip .sc{color:#8a9690;font-size:11.5px;}
   .muted{color:#9aa6a0;font-size:13px;}
 
+  /* 저장 방식 — 더하기 / 새로 설정 (2026-09-02) */
+  .addbox{margin-top:14px;}
+  .addopt{display:flex;gap:9px;align-items:flex-start;border:1px solid var(--line-soft);border-radius:11px;
+    padding:10px 12px;margin-bottom:7px;background:#fff;cursor:pointer;font-size:13.5px;color:var(--ink);}
+  .addopt.on{border-color:var(--accent);background:#EFF6F2;}
+  .addopt input{margin-top:3px;width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex:none;}
+  .addopt b{font-weight:700;}
+  .addopt small{display:block;color:var(--ink-soft);font-size:12px;font-weight:400;margin-top:1px;}
+  .addprev{font-size:12.5px;color:var(--ink-soft);background:#EBF0ED;border-radius:9px;padding:9px 12px;margin-top:2px;}
+  .addprev b{color:var(--accent);}
+  .addprev.warn{background:#fbf3e3;color:#8a6520;}
+
   /* 반으로 고르기 (2026-09-02) */
   .clsbox{border:1px solid var(--line-soft);border-radius:13px;padding:14px 14px 16px;margin:6px 0 14px;background:#FAFCFB;}
   .cls-h{font-size:13.5px;font-weight:700;color:var(--accent);}
@@ -184,7 +196,8 @@
     <!-- 반으로 고르기 (2026-09-02 사용자 요청 "정규 내신 반을 드롭다운으로 선택하면 친구들이 배정되도록") -->
     <div class="clsbox">
       <div class="cls-h">반으로 고르기
-        <small>정규·내신 반을 고르면 그 반 학생이 아래에 떠요. 체크를 풀면 그 학생은 빠집니다.</small></div>
+        <small>담당 강사를 고르면 <b>그 강사 담당 학생 전체</b>를, 반을 고르면 <b>그 반 학생</b>을 한 번에 담을 수 있어요.
+          체크를 풀면 그 학생은 빠집니다.</small></div>
       <div class="cls-row">
         <div class="seg" id="clsBook">
           <button type="button" class="on" data-book="정규">정규</button>
@@ -197,6 +210,16 @@
     </div>
 
     <div id="picker"></div>
+
+    <!-- 저장 방식 (2026-09-02 사용자 요청 "기존 대상에 더하기로") -->
+    <div class="addbox">
+      <label class="addopt on" id="opt-add"><input type="radio" name="tmode" value="add" checked>
+        <span><b>기존 대상에 더하기</b><small>지금 대상은 그대로 두고 고른 학생을 추가해요.</small></span></label>
+      <label class="addopt" id="opt-set"><input type="radio" name="tmode" value="set">
+        <span><b>이 학생들만 대상으로</b><small>지금 대상을 지우고 고른 학생으로 새로 설정해요.</small></span></label>
+      <div class="addprev" id="tprev"></div>
+    </div>
+
     <label for="memo">비고 <span style="font-weight:400;color:#9aa6a0">(선택 · 예: 6/26주차)</span></label>
     <input type="text" id="memo" placeholder="예: 이번 주 / 보충 대상" />
     <button type="button" class="submit" id="assignBtn" onclick="saveAssign()">이 학생들에게 클리닉 배정</button>
@@ -343,6 +366,7 @@
         endpoint: REPORT_API,
         onChange: function(sel){
           currentSel = sel;
+          renderTargetPreview();
           var s=document.getElementById('assignStatus');
           if(sel && s.classList.contains('err')){ s.textContent=''; s.className='status'; }
         }
@@ -421,6 +445,7 @@
 
   /* ===== 신청 설정 (강사별 시간대·신청받기·대상) — 클리닉 백엔드 ===== */
   var GLOBAL_TARGET = null;   // 공통(옛) 대상 — 강사별 대상이 없는 강사에게 적용
+  var MIX_OK = false;         // 클리닉 백엔드가 '학년+이름 섞인 대상'을 읽을 수 있는가 (재배포 확인용)
   function loadClinicSettings(){
     fetchJSON(CLINIC_API+'?action=data&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
       .then(function(d){
@@ -428,8 +453,9 @@
         sbResyncClinic(d.rows); sbClinicSettings(d);
         tslots = (d.teachers||[]).slice();
         GLOBAL_TARGET = d.target||null;
+        MIX_OK = !!d.mixTarget;   // 학년+이름이 섞인 대상을 읽는 배포본인지
         renderTslotSelect(); renderTslot(); renderTslotSummary();
-        renderTargetCurBox();
+        renderTargetCurBox(); renderTargetPreview();
       }).catch(function(){ document.getElementById('tslotSummary').textContent='설정을 불러오지 못했어요 — 인터넷 확인'; });
   }
   /* 페이지 전체 기준 강사 — 강사를 바꾸면 시간대·대상·배정 내역·현황이 함께 바뀐다 */
@@ -441,6 +467,7 @@
     document.getElementById('statusCard').style.display = nm ? '' : 'none';
     renderTslot();
     renderTargetCurBox();
+    renderTargetPreview();
     renderAssignListBox();
     clsFillTeachers(); clsSyncTeacher();   // 반 목록도 고른 강사 기준으로
     if (nm && !STAT) loadStatus();   // 처음 강사를 고르면 현황도 바로 불러온다
@@ -464,6 +491,79 @@
     if(tg) el.innerHTML=esc(nm)+'T 클리닉 신청 대상: '+targetLabel(tg);
     else el.innerHTML=esc(nm)+'T 클리닉 신청 대상: <b>아직 설정 안 됨</b>'
       +(GLOBAL_TARGET&&GLOBAL_TARGET.type?' — 지금은 공통 대상('+targetLabel(GLOBAL_TARGET)+')이 적용돼요. 아래에서 배정하면 이 강사 대상으로 저장됩니다.':' — 아래에서 학생을 배정하면 설정됩니다.');
+  }
+  /* ═══ 대상 합치기 — 배정은 '기존 대상에 더하기'가 기본 (2026-09-02 사용자 요청) ═══
+   * 예전에는 배정할 때마다 그 강사의 신청 대상이 **마지막 선택으로 통째 교체**됐다.
+   * 그래서 57명을 배정해 둔 강사에게 개인 한 명을 더 배정하면 앞의 57명이 지워져
+   * 그 학생들이 신청을 못 하게 됐다(2026-09-02 이승연T에서 실제 발생).
+   * 이제 기존 대상 토큰과 이번 선택을 합쳐 저장한다. 학년 토큰과 이름 토큰이 섞일 수 있어
+   * 백엔드·학생 페이지 판정도 '토큰마다 학년/이름을 가려서' 보도록 함께 고쳤다. */
+  function tokensOf(t){ return String(t||'').split(/\s*[,\n]\s*/).map(function(x){ return x.trim(); }).filter(Boolean); }
+  function isGradeTok(t){ var v=String(t||'').replace(/\s+/g,''); return /학년/.test(v) || /^[중고][1-3]$/.test(v); }
+  /* 이 강사에게 지금 적용 중인 대상 — 강사별 대상이 없으면 공통 대상이 적용된다 */
+  function curTargetFor(nm){
+    var t = nm ? tslotOf(nm) : null;
+    if (t && t.target && t.target.type) return { sel:t.target, own:true };
+    if (GLOBAL_TARGET && GLOBAL_TARGET.type) return { sel:GLOBAL_TARGET, own:false };
+    return { sel:null, own:false };
+  }
+  /* 기존 대상 + 이번 선택 = 합집합 (같은 토큰은 한 번만) */
+  function mergeTarget(cur, sel){
+    if (!cur || !cur.type) return { type:sel.type, target:sel.target, added:tokensOf(sel.target).length, mixed:false };
+    if (String(cur.type).indexOf('전체') >= 0) return { type:'전체', target:'', added:0, mixed:false, keptAll:true };
+    if (String(sel.type).indexOf('전체') >= 0) return { type:'전체', target:'', added:0, mixed:false, toAll:true };
+    var a = tokensOf(cur.target), out = a.slice(), seen = {};
+    a.forEach(function(t){ seen[t] = 1; });
+    tokensOf(sel.target).forEach(function(t){ if (!seen[t]){ seen[t] = 1; out.push(t); } });
+    var gs = out.filter(isGradeTok).length;
+    return { type: (gs === out.length) ? '학년' : (out.length === 1 ? '개인' : '일부'),
+             target: out.join(', '), added: out.length - a.length,
+             mixed: (gs > 0 && gs < out.length) };
+  }
+  function targetMode(){ var r=document.querySelector('input[name="tmode"]:checked'); return r ? r.value : 'add'; }
+  /* 저장하면 대상이 어떻게 되는지 미리 보여 준다 */
+  function renderTargetPreview(){
+    var box = document.getElementById('tprev'); if (!box) return;
+    document.getElementById('opt-add').classList.toggle('on', targetMode() === 'add');
+    document.getElementById('opt-set').classList.toggle('on', targetMode() === 'set');
+    var nm = masterTeacher();
+    if (!nm){ box.className='addprev'; box.textContent='강사를 먼저 선택하세요.'; return; }
+    var sel = currentSel || (picker && picker.getSelection());
+    var cur = curTargetFor(nm);
+    if (!sel){
+      box.className='addprev';
+      box.innerHTML = '지금 '+esc(nm)+'T 대상: <b>'+targetCount(cur.sel)+'</b>'+(cur.sel&&!cur.own?' (공통 대상)':'')+
+                      ' — 학생을 고르면 저장 뒤 대상이 여기에 표시됩니다.';
+      return;
+    }
+    if (targetMode() === 'set'){
+      box.className='addprev warn';
+      box.innerHTML = '저장하면 '+esc(nm)+'T 대상이 <b>'+targetCount(sel)+'</b>으로 <b>새로 설정</b>돼요 — 지금 대상('+targetCount(cur.sel)+')은 지워집니다.';
+      return;
+    }
+    var m = mergeTarget(cur.sel, sel);
+    if (m.keptAll){
+      box.className='addprev';
+      box.innerHTML = '지금 '+esc(nm)+'T 대상이 <b>전 학년</b>이라 이미 모두 포함돼 있어요 — 더해도 그대로입니다.';
+      return;
+    }
+    var need = m.mixed && !MIX_OK;
+    box.className = 'addprev' + (need ? ' warn' : '');
+    box.innerHTML = '지금 <b>'+targetCount(cur.sel)+'</b>'+(cur.sel&&!cur.own?'(공통)':'')+
+      ' → 저장하면 <b>'+targetCount(m)+'</b>' + (m.added ? ' (<b>'+m.added+'명</b> 추가)' : ' (이미 다 들어 있어요)') +
+      (need ? '<br>⚠️ 학년과 이름이 섞인 대상이에요 — <b>클리닉 백엔드 재배포가 필요</b>합니다. 지금 저장하면 학년 대상 학생이 막힐 수 있어요.' : '');
+  }
+  /* 대상을 사람 말로 — '고3 학년' / '58명' */
+  function targetCount(sel){
+    if (!sel || !sel.type) return '설정 없음';
+    if (String(sel.type).indexOf('전체') >= 0) return '전 학년';
+    var toks = tokensOf(sel.target);
+    if (!toks.length) return '설정 없음';
+    var gs = toks.filter(isGradeTok), ns = toks.filter(function(t){ return !isGradeTok(t); });
+    var out = [];
+    if (gs.length) out.push(gs.join('·'));
+    if (ns.length) out.push(ns.length + '명');
+    return out.join(' + ');
   }
   function fetchJSON(url){ return fetch(url, {cache:'no-store'}).then(function(r){ return r.json(); }); }
 
@@ -573,6 +673,7 @@
    * 시간표 명단은 이름만 있고 학교·학년이 없어서 재원 명단(ROSTER)과 이름으로 잇는다
    *   (앞 괄호=내신 확인반 학교 구분, 뒤 괄호=특이사항은 떼고 대조 · 끝의 A는 한 번 더 시도). */
   var CLS_BOOK = '정규', CLS_CACHE = {}, CLS_CUR = null, CLS_CHK = {}, CLS_ROWS = [], CLS_BYKEY = {};
+  var CLS_SRC = {};   // '담당 학생 전체'에서 학생이 어느 반 학생인지 (이름 → 반이름)
   var CLS_DAYS = { '월':0, '화':1, '수':2, '목':3, '금':4, '토':5, '일':6 };
   /* '5:30'·'오전9:30'·'밤10:00' → 분 (슈국 스케쥴 mins()와 같은 규칙) */
   function clsMins(t){
@@ -634,11 +735,11 @@
     var sel = document.getElementById('clsTeacher'), cur = sel.value;
     var seen = {}, names = [];
     CLS_ROWS.forEach(function(c){ if (c.teacher && !seen[c.teacher]){ seen[c.teacher]=1; names.push(c.teacher); } });
-    names.sort(function(a,b){ return a.localeCompare(b,'ko'); });
+    names.sort(function(a,b){ return clsTeacherFull(a).localeCompare(clsTeacherFull(b),'ko'); });
     sel.innerHTML = '<option value="">담당 강사 전체</option>' +
-      names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'T 담당 반</option>'; }).join('');
+      names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(clsTeacherFull(n))+'T 담당 반</option>'; }).join('');
     // 맨 위에서 고른 강사 클리닉이 기본값 — 그 강사 반이 있을 때만
-    var want = (cur && seen[cur]) ? cur : (seen[masterTeacher()] ? masterTeacher() : '');
+    var want = (cur && seen[cur]) ? cur : clsTeacherKey(masterTeacher());
     sel.value = want;
   }
   function clsFillSelect(){
@@ -652,15 +753,79 @@
     }
     var byDay = {};
     list.forEach(function(c){ (byDay[c.day] = byDay[c.day] || []).push(c); });
-    sel.innerHTML = '<option value="">반을 고르세요 ('+list.length+'개)</option>' +
+    // 강사를 고른 상태면 그 강사 담당 학생을 한 번에 (2026-09-02 사용자 요청 "강사 선택 → 담당학생 모두 선택")
+    var allOpt = '';
+    if (t){
+      var nAll = clsTeacherStudents(t).length;
+      allOpt = '<option value="__all__">— '+esc(clsTeacherFull(t))+'T 담당 학생 전체 (반 '+list.length+'개 · '+nAll+'명) —</option>';
+    }
+    sel.innerHTML = '<option value="">'+(t ? '담당 학생 전체 또는 반을 고르세요' : '반을 고르세요 ('+list.length+'개)')+'</option>' + allOpt +
       Object.keys(byDay).sort(function(a,b){ return CLS_DAYS[a]-CLS_DAYS[b]; }).map(function(d){
         return '<optgroup label="'+esc(d)+'요일">' + byDay[d].map(function(c){
           return '<option value="'+esc(c.id)+'">'+esc(c.day)+' '+esc(c.start)+' · '+esc(c.cls)+
-                 (c.teacher ? ' · '+esc(c.teacher)+'T' : '')+' ('+c.students.length+'명)</option>';
+                 (c.teacher ? ' · '+esc(clsTeacherFull(c.teacher))+'T' : '')+' ('+c.students.length+'명)</option>';
         }).join('') + '</optgroup>';
       }).join('');
     if (cur && list.some(function(c){ return c.id === cur; })) sel.value = cur;
     else if (cur){ CLS_CUR = null; clsStatus(''); }
+  }
+  /* 시간표(tt_classes)의 담당T는 이름만 적혀 있고('승연'·'선주'), 클리닉 강사 목록은 성까지
+   * 적혀 있다('이승연'·'배선주'). 그대로 비교하면 강사를 골라도 그 강사 반이 하나도 안 잡힌다
+   * (2026-09-02 사용자 신고 "이승연 선생님의 수업을 모두 선택할 수 있어야"). 끝이 겹치면 같은 사람으로 본다.
+   * '슈'는 원장님(이수경)의 시간표 표기라 따로 잇는다. */
+  var CLS_TALIAS = { '슈': '이수경' };
+  function clsTSame(a, b){
+    var x = norm(a), y = norm(b);
+    if (!x || !y) return false;
+    if (x === y) return true;
+    if (CLS_TALIAS[x] === y || CLS_TALIAS[y] === x) return true;
+    var sh = (x.length <= y.length) ? x : y, lo = (x.length <= y.length) ? y : x;
+    return sh.length >= 2 && lo.length - sh.length <= 1 && lo.slice(-sh.length) === sh;
+  }
+  /* 시간표 표기('승연') → 클리닉에서 쓰는 이름('이승연'). 못 찾으면 그대로 */
+  function clsTeacherFull(t){
+    var v = norm(t);
+    if (!v) return '';
+    if (CLS_TALIAS[v]) return CLS_TALIAS[v];
+    var pool = TEACHER_LIST.concat(ROSTER.map(function(x){ return x.teacher; }));
+    for (var i = 0; i < pool.length; i++){
+      var f = norm(pool[i]);
+      if (f && f.length > v.length && clsTSame(f, v)) return pool[i];
+    }
+    return String(t || '');
+  }
+  /* 클리닉 강사 이름('이승연') → 지금 반 목록에 쓰인 시간표 표기('승연'). 없으면 '' */
+  function clsTeacherKey(full){
+    for (var i = 0; i < CLS_ROWS.length; i++){
+      if (CLS_ROWS[i].teacher && clsTSame(CLS_ROWS[i].teacher, full)) return CLS_ROWS[i].teacher;
+    }
+    return '';
+  }
+  /* '2026 고등 1학년' → '고1' (칸이 좁아 짧게) */
+  function clsGradeShort(g){
+    var k = gradeKeyOf(g);
+    return (k.d ? (k.lv || '고') + k.d : String(g||''));
+  }
+  /* 이름 표기에서 괄호(앞=학교 구분, 뒤=특이사항)를 뗀 '진짜 이름' */
+  function clsPlain(tok){
+    return String(tok||'').replace(/^\s*\([^)]*\)\s*/,'').replace(/\(.*\)$/,'').trim();
+  }
+  /* 그 강사가 맡은 반 학생 전체 (지금 구분(정규/내신) 기준, 같은 학생은 한 번만) */
+  function clsTeacherStudents(t){
+    var seen = {}, out = [];
+    CLS_ROWS.forEach(function(c){
+      if (c.teacher !== t) return;
+      c.students.forEach(function(nm){
+        var p = clsPlain(nm);
+        if (!p) return;
+        if (seen[p]){   // 같은 학생이 여러 반이면 반이름을 잇는다 (같은 이름은 한 번만)
+          if (CLS_SRC[p].split('·').indexOf(c.cls) < 0) CLS_SRC[p] = CLS_SRC[p] + '·' + c.cls;
+          return;
+        }
+        seen[p] = 1; CLS_SRC[p] = c.cls; out.push(nm);
+      });
+    });
+    return out;
   }
   /* 재원 명단에서 시간표 이름 찾기 — 괄호를 떼고 정확히, 안 되면 끝의 A만 떼고 한 번 더.
    * 같은 이름이 여럿이면 앞 괄호의 학교 구분('(화정)심지후')으로 좁힌다. */
@@ -678,8 +843,15 @@
   }
   function clsKey(s){ return s.name + '|' + (s.school||'') + '|' + (s.grade||''); }
   function clsPick(cid){
-    CLS_CUR = null; CLS_CHK = {};
-    for (var i=0;i<CLS_ROWS.length;i++) if (CLS_ROWS[i].id === cid) CLS_CUR = CLS_ROWS[i];
+    CLS_CUR = null; CLS_CHK = {}; CLS_SRC = {};
+    if (cid === '__all__'){
+      var t = document.getElementById('clsTeacher').value;
+      var stus = clsTeacherStudents(t);   // CLS_SRC도 여기서 채워진다
+      var nCls = CLS_ROWS.filter(function(c){ return c.teacher === t; }).length;
+      CLS_CUR = { id:'__all__', cls: clsTeacherFull(t) + 'T 담당 학생 전체', day:'', start:'', end:'',
+                  teacher:t, students: stus, all:true, nCls: nCls };
+    }
+    else for (var i=0;i<CLS_ROWS.length;i++) if (CLS_ROWS[i].id === cid) CLS_CUR = CLS_ROWS[i];
     if (!CLS_CUR){ clsStatus(''); return; }
     if (!ROSTER.length){ clsStatus('<p class="muted">재원 명단을 불러오는 중이에요 — 잠시 뒤 다시 골라 주세요.</p>'); return; }
     CLS_CUR.students.forEach(function(nm){
@@ -696,8 +868,10 @@
     var okN = rows.filter(function(r){ return r.f.hit; }).length;
     var missN = rows.length - okN;
     var chkN = Object.keys(CLS_CHK).length;
-    var html = '<div class="cls-bar"><span><b>'+esc(c.cls)+'</b> · '+esc(c.day)+' '+esc(c.start)+'~'+esc(c.end)+
-               (c.teacher ? ' · '+esc(c.teacher)+'T' : '')+' — 선택 <b>'+chkN+'</b>/'+okN+'명</span>'+
+    var head = c.all ? ('<b>'+esc(c.cls)+'</b> · 반 '+c.nCls+'개')
+                     : ('<b>'+esc(c.cls)+'</b> · '+esc(c.day)+' '+esc(c.start)+'~'+esc(c.end)+
+                        (c.teacher ? ' · '+esc(clsTeacherFull(c.teacher))+'T' : ''));
+    var html = '<div class="cls-bar"><span>'+head+' — 선택 <b>'+chkN+'</b>/'+okN+'명</span>'+
                '<span class="sp"><button type="button" id="clsAll">모두 선택</button>'+
                '<button type="button" id="clsNone">모두 해제</button></span></div>'+
                '<div class="cls-grid">'+ rows.map(function(r){
@@ -707,11 +881,13 @@
                           (r.f.dup ? '동명이인 — 아래에서 직접' : '명단에 없음')+'</span></div>';
                  }
                  var st = r.f.hit, k = clsKey(st), on = !!CLS_CHK[k];
+                 // '담당 학생 전체'에서는 어느 반 학생인지 함께 보여 준다
+                 var meta = c.all ? (CLS_SRC[r.f.plain] || '') : [st.school, clsGradeShort(st.grade)].filter(Boolean).join(' ');
                  return '<div class="cls-item'+(on?' on':'')+'" data-key="'+esc(k)+'" role="checkbox" tabindex="0"'+
-                        ' aria-checked="'+(on?'true':'false')+'">'+
+                        ' aria-checked="'+(on?'true':'false')+'" title="'+esc([st.school, st.grade].filter(Boolean).join(' '))+'">'+
                         '<span class="ck">'+(on?'✓':'')+'</span>'+
                         '<span>'+esc(st.name)+'</span>'+
-                        '<span class="m">'+esc([st.school, st.grade].filter(Boolean).join(' '))+'</span></div>';
+                        '<span class="m">'+esc(meta)+'</span></div>';
                }).join('') +'</div>'+
                (missN ? '<p class="muted" style="margin:8px 0 0;font-size:12.5px;">'+missN+
                         '명은 재원 명단에서 찾지 못했어요(아직 등록 전이거나 동명이인) — 아래 목록에서 직접 골라 주세요.</p>' : '')+
@@ -723,9 +899,7 @@
   function clsSyncTeacher(){
     var sel = document.getElementById('clsTeacher');
     if (!sel || !CLS_ROWS.length) return;
-    var m = masterTeacher();
-    var has = CLS_ROWS.some(function(c){ return c.teacher === m; });
-    var want = has ? m : '';
+    var want = clsTeacherKey(masterTeacher());   // '이승연' → 시간표 표기 '승연'
     if (sel.value !== want){ sel.value = want; clsClearPick(); }
     clsFillSelect();
   }
@@ -763,17 +937,17 @@
     var keys = Object.keys(CLS_CHK);
     if (!keys.length) return;
     var nm = CLS_CUR ? CLS_CUR.cls : '';
-    var when = CLS_CUR ? (CLS_CUR.day + CLS_CUR.start) : '';
+    var when = (CLS_CUR && !CLS_CUR.all) ? (CLS_CUR.day + CLS_CUR.start) : '';
     var n = keys.length;
     if (picker && picker.selectByKeys){
       n = picker.selectByKeys(keys).matched;
-      setAssignStatus('✓ ' + nm + ' 반 ' + n + '명을 대상으로 담았어요. 아래 목록에서 더하거나 뺀 뒤 [이 학생들에게 클리닉 배정]을 눌러 주세요.', 'ok');
+      setAssignStatus('✓ ' + nm + ' ' + n + '명을 대상으로 담았어요. 아래 목록에서 더하거나 뺀 뒤 [이 학생들에게 클리닉 배정]을 눌러 주세요.', 'ok');
     } else {
       var sts = keys.map(function(k){ return CLS_BYKEY[k]; }).filter(Boolean);
       currentSel = { type:'일부', target: sts.map(clsToken).join(', '), count: sts.length,
                      summary:'일부 — ' + sts.length + '명 (' + nm + ')' };
       n = sts.length;
-      setAssignStatus('✓ ' + nm + ' 반 ' + n + '명을 대상으로 담았어요. [이 학생들에게 클리닉 배정]을 눌러 주세요.', 'ok');
+      setAssignStatus('✓ ' + nm + ' ' + n + '명을 대상으로 담았어요. [이 학생들에게 클리닉 배정]을 눌러 주세요.', 'ok');
     }
     var memo = document.getElementById('memo');
     if (memo && !memo.value.trim()) memo.value = nm + (when ? ' (' + when + ')' : '');   // 배정 내역에서 어느 반인지 보이게
@@ -788,6 +962,15 @@
     if(!tNm){ setAssignStatus('먼저 맨 위에서 강사를 선택해 주세요 — 배정은 강사 클리닉 단위로 저장돼요.', 'err'); return; }
     var sel = currentSel || (picker && picker.getSelection());
     if(!sel){ setAssignStatus('대상을 먼저 선택해 주세요.', 'err'); return; }
+    // 신청 대상은 '기존 대상에 더하기'가 기본 — 지우고 새로 하려면 위에서 [이 학생들만 대상으로]
+    var cur = curTargetFor(tNm);
+    var merged = (targetMode() === 'set') ? { type:sel.type, target:sel.target, added:0, mixed:false }
+                                          : mergeTarget(cur.sel, sel);
+    if (merged.mixed && !MIX_OK){
+      setAssignStatus('학년과 이름이 섞인 대상은 지금 배포본이 읽지 못해요 — 클리닉 백엔드를 재배포한 뒤 다시 해 주세요. ' +
+                      '(급하면 [이 학생들만 대상으로]를 고르면 됩니다)', 'err');
+      return;
+    }
     var btn=document.getElementById('assignBtn'); btn.disabled=true; var lb=btn.textContent; btn.textContent='배정 중…';
     setAssignStatus(tNm+'T 클리닉으로 배정하는 중…');
     fetch(REPORT_API, {
@@ -801,16 +984,19 @@
         clsClearPick();          // '반으로 고르기'도 처음 상태로 (다음 반을 고르기 좋게)
         document.getElementById('memo').value='';
         loadAssignList();
-        // 같은 선택을 이 강사 클리닉의 '신청 대상'으로 저장 → 이 학생들만 신청 가능 + 개인 페이지 카드 표시
+        // 합친 대상을 이 강사 클리닉의 '신청 대상'으로 저장 → 그 학생들이 신청 가능 + 개인 페이지 카드 표시
         fetchJSON(CLINIC_API+'?action=setTarget&teacher='+encodeURIComponent(tNm)
-          +'&sel='+encodeURIComponent(JSON.stringify({ type:sel.type, target:sel.target }))
+          +'&sel='+encodeURIComponent(JSON.stringify({ type:merged.type, target:merged.target }))
           +'&pw='+encodeURIComponent(SERVER_PW)+'&t='+Date.now())
           .then(function(t){
             if(t && t.result==='success'){
               if(t.teachers) tslots=(t.teachers||tslots).slice();
               sbClinicSettings({teachers:tslots});
-              renderTslotSelect(); renderTslotSummary(); renderTargetCurBox();
-              setAssignStatus('✓ '+tNm+'T 클리닉 배정 + 신청 대상 설정 완료 — '+sel.summary, 'ok');
+              renderTslotSelect(); renderTslotSummary(); renderTargetCurBox(); renderTargetPreview();
+              setAssignStatus('✓ '+tNm+'T 클리닉 배정 완료 — ' +
+                (targetMode() === 'set' ? ('신청 대상을 ' + targetCount(merged) + '으로 새로 설정했어요.')
+                                        : ((merged.added ? merged.added + '명을 더해 ' : '이미 들어 있어서 그대로 — ') +
+                                           '지금 신청 대상은 ' + targetCount(merged) + '이에요.')), 'ok');
             }
             else setAssignStatus('✓ 배정은 됐지만 신청 대상 설정에 실패했어요 — 클리닉 백엔드 재배포를 확인해 주세요.', 'err');
           })
@@ -876,22 +1062,31 @@
       ROSTER.forEach(function(s){
         var hit=false;
         if(type.indexOf('전체')>=0 || (!type && !tgt)) hit=true;
-        else if(type.indexOf('학년')>=0){ hit=tokens.some(function(t){ return norm(s.grade)===norm(t) || norm(s.school+s.grade)===norm(t); }); }
-        else { // 개인/일부 — 동명이인은 '이름|학교|학년' 토큰(학교·학년까지 대조)
-          hit=tokens.some(function(t){
-            if(t.indexOf('|')>=0){
-              var p=t.split('|');
-              return p[0]===s.name &&
-                     (!p[1] || looseSchool(p[1], s.school)) &&
-                     (!p[2] || norm(p[2])===norm(s.grade));
-            }
-            return t===s.name;
-          });
-        }
+        // 한 대상에 학년 토큰과 이름 토큰이 섞일 수 있다('기존 대상에 더하기') — 토큰마다 가려서 본다
+        else hit=tokens.some(function(t){
+          if(isGradeTok(t)) return norm(s.grade)===norm(t) || norm(s.school+s.grade)===norm(t) || gradeSame(t, s.grade);
+          if(t.indexOf('|')>=0){
+            var p=t.split('|');
+            return p[0]===s.name &&
+                   (!p[1] || looseSchool(p[1], s.school)) &&
+                   (!p[2] || norm(p[2])===norm(s.grade));
+          }
+          return t===s.name;
+        });
         if(hit) set[s.name+'|'+s.school+'|'+s.grade]=s;
       });
     });
     return Object.keys(set).map(function(k){ return set[k]; });
+  }
+  /* 학년 토큰 비교 — '고3' · '2026 고등 3학년' 을 같게 본다 (클리닉 백엔드 gradeKey_와 같은 규칙) */
+  function gradeKeyOf(v){
+    var t=String(v||''); var lv=t.indexOf('중')>=0?'중':(t.indexOf('고')>=0?'고':'');
+    var m=t.replace(/20\d{2}/,'').match(/[1-3]/);
+    return { lv:lv, d:m?m[0]:'' };
+  }
+  function gradeSame(a,b){
+    var x=gradeKeyOf(a), y=gradeKeyOf(b);
+    return !!(x.d && y.d && x.d===y.d && (x.lv||'고')===(y.lv||'고'));
   }
   function looseSchool(a,b){ var na=norm(a), nb=norm(b); if(!na||!nb) return false; return na.indexOf(nb)>=0 || nb.indexOf(na)>=0; }
 
@@ -1011,6 +1206,10 @@
     return '<span class="'+cls+'">'+(r.ambiguous?'⚠️ ':'')+esc(a.name)+
       ' <span class="sc">'+esc(meta)+(r.slot?(' · '+esc(r.slot)):'')+'</span></span>';
   }
+
+  document.querySelectorAll('input[name="tmode"]').forEach(function(r){
+    r.addEventListener('change', renderTargetPreview);
+  });
 
   /* 시작 — 이 스크립트의 var가 모두 채워진 뒤라야 한다 */
   unlock();

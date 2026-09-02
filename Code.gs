@@ -147,7 +147,10 @@ function gradeKey_(s) {
 // 대상에서 학년 토큰 목록('중2','고3' 형태)을 뽑는다 (신청 폼 학년 선택지용).
 //  학년 대상 → ["중2","고3"] / 전체·개인·일부 → null (학년으로 막지 않음)
 function gradeTokensOf_(sel) {
-  if (!sel || !sel.type || sel.type.indexOf("학년") < 0) return null;
+  if (!sel || !sel.type) return null;
+  // 학년 토큰만으로 된 대상일 때만 학년으로 막는다 — 이름이 섞여 있으면(더하기) 막지 않는다
+  var all = String(sel.target || "").split(/\s*[,\n]\s*/).map(function (t) { return t.trim(); }).filter(String);
+  if (!all.length || !all.every(isGradeToken_)) return null;
   var out = {};
   String(sel.target || "").split(/\s*[,\n]\s*/).forEach(function (tok) {
     if (!tok.trim()) return;
@@ -175,6 +178,16 @@ function setTarget_(sel) {
 
 // 이 학생이 현재 신청 대상인가?
 //  - 전체: 모두 허용 / 학년: 학년 숫자 일치 / 개인·일부: 이름(동명이인은 이름|학교|학년) 일치
+// 대상 토큰이 '학년'인지 ('고3' · '중2' · '2026 고등 3학년'). 나머지는 이름 토큰으로 본다.
+function isGradeToken_(t) {
+  var s = String(t || "").replace(/\s+/g, "");
+  return /학년/.test(s) || /^[중고][1-3]$/.test(s);
+}
+/* 대상 판정 — 토큰마다 학년/이름을 가려서 본다 (2026-09-02).
+ * 배정이 '기존 대상에 더하기'로 바뀌면서 한 대상에 학년 토큰과 이름 토큰이 섞일 수 있다
+ * (예: '2026 고등 3학년, 천예원'). 옛 방식은 type이 '학년'이면 전부 학년으로만,
+ * 아니면 전부 이름으로만 봐서 섞인 대상을 못 읽었다. type은 이제 표시용이다.
+ * (옛 데이터는 토큰 종류가 한 가지뿐이라 판정 결과가 예전과 같다.) */
 function eligibleForTarget_(sel, data) {
   if (!sel || !sel.type || sel.type.indexOf("전체") >= 0) return true;
   // 학년 문자열('2026 고등 3학년')에 공백이 있으므로 쉼표·줄바꿈으로만 나눈다
@@ -184,17 +197,14 @@ function eligibleForTarget_(sel, data) {
   var name = String(data.name || "").trim();
   var school = String(data.school || "").trim();
   var gk = gradeKey_(data.grade);   // 중·고 구분 학년 (옛 형식 '2'는 고등으로)
-  if (sel.type.indexOf("학년") >= 0) {
-    if (!gk.d) return false;
-    var glv = gk.lv || "고";
-    return tokens.some(function (t) {
+  var glv = gk.lv || "고";
+  return tokens.some(function (t) {
+    if (isGradeToken_(t)) {                    // 학년 토큰
+      if (!gk.d) return false;
       var k = gradeKey_(t);
       return k.d && k.d === gk.d && (k.lv || "고") === glv;
-    });
-  }
-  // 개인 · 일부: 이름 또는 동명이인 구분 토큰 '이름|학교|학년'
-  return tokens.some(function (t) {
-    if (t.indexOf("|") >= 0) {
+    }
+    if (t.indexOf("|") >= 0) {                 // 동명이인 구분 토큰 '이름|학교|학년'
       var p = t.split("|");
       var tn = (p[0] || "").trim(), ts = (p[1] || "").trim(), tg = (p[2] || "").trim();
       if (!tn || tn !== name) return false;
@@ -203,7 +213,7 @@ function eligibleForTarget_(sel, data) {
       if (tk.d && gk.d && (tk.d !== gk.d || (tk.lv && gk.lv && tk.lv !== gk.lv))) return false;
       return true;
     }
-    return t === name;
+    return t === name;                         // 이름 토큰
   });
 }
 
@@ -648,7 +658,8 @@ function doGet(e) {
       headers.forEach(function (h, i) { o[h] = r[i]; });
       return o;
     });
-    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: getMasterSlots_(), teachers: getTeacherSlots_(), target: getTarget_() });
+    // mixTarget: 학년+이름이 섞인 대상을 읽을 수 있는 배포본인지 (배정 페이지의 '기존 대상에 더하기'가 확인)
+    return reply_(params.callback, { result: "success", rows: rows, open: isOpen_(), slots: getActiveSlots_(), allSlots: getMasterSlots_(), teachers: getTeacherSlots_(), target: getTarget_(), mixTarget: true });
   }
 
   return ContentService.createTextOutput("이수경국어 클리닉 수업 신청 엔드포인트가 작동 중입니다.");

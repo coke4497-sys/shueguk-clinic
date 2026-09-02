@@ -70,6 +70,38 @@
   .pchip .sc{color:#8a9690;font-size:11.5px;}
   .muted{color:#9aa6a0;font-size:13px;}
 
+  /* 반으로 고르기 (2026-09-02) */
+  .clsbox{border:1px solid var(--line-soft);border-radius:13px;padding:14px 14px 16px;margin:6px 0 14px;background:#FAFCFB;}
+  .cls-h{font-size:13.5px;font-weight:700;color:var(--accent);}
+  .cls-h small{display:block;font-weight:400;color:var(--ink-soft);font-size:12.5px;margin-top:2px;}
+  .cls-row{display:flex;gap:8px;margin-top:11px;align-items:center;flex-wrap:wrap;}
+  .seg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;flex:none;}
+  .seg button{font:inherit;font-size:13.5px;padding:9px 15px;border:none;background:#fff;color:var(--ink-soft);cursor:pointer;}
+  .seg button.on{background:#EDF4F0;color:var(--accent);font-weight:700;}
+  .cls-row select{flex:1;min-width:150px;padding:9px 11px;font-size:14px;}
+  .clsbox > select{margin-top:9px;padding:11px 12px;}
+  .cls-stus{margin-top:12px;}
+  .cls-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);margin-bottom:8px;}
+  .cls-bar b{color:var(--accent);}
+  .cls-bar .sp{margin-left:auto;display:flex;gap:6px;}
+  .cls-bar button{border:1.5px solid var(--line);background:#fff;color:var(--ink-soft);font:inherit;font-size:12px;
+    font-weight:700;padding:5px 10px;border-radius:8px;cursor:pointer;}
+  .cls-bar button:hover{border-color:var(--accent);color:var(--accent);}
+  .cls-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;}
+  @media (max-width:480px){ .cls-grid{grid-template-columns:1fr;} }
+  .cls-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line-soft);border-radius:9px;
+    padding:7px 10px;background:#fff;font-size:13.5px;cursor:pointer;}
+  .cls-item.on{border-color:var(--accent);background:#EFF6F2;}
+  .cls-item .ck{width:17px;height:17px;border:1.5px solid var(--line);border-radius:5px;flex:none;
+    display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#fff;background:#fff;}
+  .cls-item.on .ck{background:var(--accent);border-color:var(--accent);}
+  .cls-item .m{color:#9aa6a0;font-size:11.5px;margin-left:auto;text-align:right;}
+  .cls-item.miss{background:#FBF3E3;border-color:#ECD9AF;color:#8a6520;cursor:default;}
+  .cls-apply{width:100%;margin-top:11px;padding:11px;border:1.5px solid var(--accent);border-radius:10px;
+    background:#fff;color:var(--accent);font:inherit;font-weight:700;font-size:14px;cursor:pointer;}
+  .cls-apply:hover{background:#EFF6F2;}
+  .cls-apply:disabled{border-color:var(--line);color:#9aa6a0;background:#fff;cursor:default;}
+
   /* 시간대 설정 */
   .slot-list{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px;}
   .slot-chk{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;
@@ -148,6 +180,22 @@
     <p class="sub">위에서 고른 <b>강사의 클리닉</b>에 와야 할 학생을 선택하세요. (전 학년 / 학년 / 개인 / 일부)<br>
       배정을 저장하면 <b>그 학생들만 그 강사 클리닉에</b> 신청할 수 있고, 학생 개인 페이지에도 그 학생들에게만 클리닉 카드가 열립니다.</p>
     <div class="wk-note" id="targetCur">현재 신청 대상: 확인 중…</div>
+
+    <!-- 반으로 고르기 (2026-09-02 사용자 요청 "정규 내신 반을 드롭다운으로 선택하면 친구들이 배정되도록") -->
+    <div class="clsbox">
+      <div class="cls-h">반으로 고르기
+        <small>정규·내신 반을 고르면 그 반 학생이 아래에 떠요. 체크를 풀면 그 학생은 빠집니다.</small></div>
+      <div class="cls-row">
+        <div class="seg" id="clsBook">
+          <button type="button" class="on" data-book="정규">정규</button>
+          <button type="button" data-book="내신">내신</button>
+        </div>
+        <select id="clsTeacher"><option value="">담당 강사 전체</option></select>
+      </div>
+      <select id="clsSel"><option value="">반을 고르세요</option></select>
+      <div class="cls-stus" id="clsStus"></div>
+    </div>
+
     <div id="picker"></div>
     <label for="memo">비고 <span style="font-weight:400;color:#9aa6a0">(선택 · 예: 6/26주차)</span></label>
     <input type="text" id="memo" placeholder="예: 이번 주 / 보충 대상" />
@@ -272,7 +320,9 @@
   function weekLabel(key){ var p=key.split('-'); var tue=new Date(+p[0],+p[1]-1,+p[2]); var mon=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()-1); var sun=new Date(tue.getFullYear(),tue.getMonth(),tue.getDate()+5); var f=function(x){return (x.getMonth()+1)+'/'+x.getDate();}; return f(mon)+'~'+f(sun)+' 주차'; }
 
   /* ===== 잠금 ===== */
-  (function(){ unlock(); })();   // 비밀번호 게이트 제거(2026-08-14) — 바로 열림
+  /* 비밀번호 게이트 제거(2026-08-14) — 바로 열린다. 시작(unlock→init)은 이 스크립트 맨 끝에서
+   * 부른다: 여기서 부르면 아래쪽 var(picker·ROSTER·CLS_* 등)가 아직 채워지기 전이라
+   * init()이 넣은 값을 그 var 선언이 다시 지운다(그래서 배정 뒤 picker.reset()이 안 됐다). */
   function unlock(){ document.body.classList.remove('locked'); init(); }
   function checkLock(){
     var v=document.getElementById('lockInput').value, ok=false;
@@ -392,6 +442,7 @@
     renderTslot();
     renderTargetCurBox();
     renderAssignListBox();
+    clsFillTeachers(); clsSyncTeacher();   // 반 목록도 고른 강사 기준으로
     if (nm && !STAT) loadStatus();   // 처음 강사를 고르면 현황도 바로 불러온다
     else renderStatusBody();
   }
@@ -501,7 +552,234 @@
       }).catch(function(){ btn.disabled=false; btn.textContent=lb; tslotStatus('저장 실패 — 인터넷 확인','err'); });
   }
   document.getElementById('tslotNew').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); tslotAdd(); } });
-  function loadRoster(){ fetchJSON(REPORT_API+'?action=roster&t='+Date.now()).then(function(d){ if(d&&d.result==='success'){ ROSTER=d.students||[]; renderTslotSelect(); } }).catch(function(){}); }
+  function loadRoster(){
+    fetchJSON(REPORT_API+'?action=roster&t='+Date.now()).then(function(d){
+      if(d&&d.result==='success'){
+        ROSTER=d.students||[];
+        renderTslotSelect();
+        // 명단보다 먼저 반을 골랐으면 이제 그린다 (반 명단은 이름만 있어 재원 명단이 있어야 잇는다)
+        var cs=document.getElementById('clsSel');
+        if(cs && cs.value && !CLS_CUR) clsPick(cs.value);
+      }
+    }).catch(function(){});
+  }
+
+  /* ═══ 반으로 고르기 (2026-09-02 사용자 요청 "클리닉 배정을 반별로") ═══════════
+   * 정규·내신 시간표 반(수파베이스 tt_classes)을 골라 그 반 학생을 한 번에 대상으로 담는다.
+   * · 담당 강사를 고르면 그 강사 반만 드롭다운에 보인다(맨 위에서 고른 강사 클리닉이 기본값).
+   * · 학생마다 체크를 풀면 그 학생만 뺄 수 있다 — 강사가 자기 담당 친구만 고를 수 있게.
+   * · [담기]는 아래 학생 선택 위젯의 '일부' 선택으로 옮긴다 — 선택의 원본은 위젯 한 곳,
+   *   저장 경로(addAssignment + setTarget)는 예전 그대로다.
+   * 시간표 명단은 이름만 있고 학교·학년이 없어서 재원 명단(ROSTER)과 이름으로 잇는다
+   *   (앞 괄호=내신 확인반 학교 구분, 뒤 괄호=특이사항은 떼고 대조 · 끝의 A는 한 번 더 시도). */
+  var CLS_BOOK = '정규', CLS_CACHE = {}, CLS_CUR = null, CLS_CHK = {}, CLS_ROWS = [], CLS_BYKEY = {};
+  var CLS_DAYS = { '월':0, '화':1, '수':2, '목':3, '금':4, '토':5, '일':6 };
+  /* '5:30'·'오전9:30'·'밤10:00' → 분 (슈국 스케쥴 mins()와 같은 규칙) */
+  function clsMins(t){
+    var v = String(t||'').trim();
+    var am = v.indexOf('오전') === 0, night = v.indexOf('밤') === 0;
+    var q = v.replace(/^(오전|밤)\s*/, '').split(':');
+    var h = parseInt(q[0],10)||0, m = parseInt(q[1],10)||0;
+    if (am) return (h === 12 ? 0 : h)*60 + m;
+    if (night) return (h === 12 ? 24 : h + 12)*60 + m;
+    if (h < 10) h += 12;
+    return h*60 + m;
+  }
+  function clsSbGet(path){
+    return fetch(SB_REST + path, { headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY } })
+      .then(function(r){ if(!r.ok) throw new Error('sb '+r.status); return r.json(); });
+  }
+  function clsStatus(html){ document.getElementById('clsStus').innerHTML = html; }
+  function clsInit(){
+    document.getElementById('clsBook').addEventListener('click', function(e){
+      var b = e.target.closest('button[data-book]'); if(!b) return;
+      CLS_BOOK = b.getAttribute('data-book');
+      this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x===b); });
+      CLS_CUR = null; document.getElementById('clsSel').value = '';
+      clsStatus('');
+      clsLoad();
+    });
+    document.getElementById('clsTeacher').addEventListener('change', function(){ clsFillSelect(); });
+    document.getElementById('clsSel').addEventListener('change', function(){ clsPick(this.value); });
+    document.getElementById('clsStus').addEventListener('click', clsBoxClick);
+    clsLoad();
+  }
+  function clsLoad(){
+    var book = CLS_BOOK;
+    if (CLS_CACHE[book]){ CLS_ROWS = CLS_CACHE[book]; clsFillTeachers(); clsSyncTeacher(); return; }
+    document.getElementById('clsSel').innerHTML = '<option value="">반 목록 불러오는 중…</option>';
+    // '이 주만' 반(w…)은 그 날짜에만 있는 임시 반이라 뺀다
+    clsSbGet('/tt_classes?book=eq.'+encodeURIComponent(book)+'&class_id=not.like.w*'+
+             '&select=class_id,name,day,start_time,end_time,teacher,location,roster')
+      .then(function(rows){
+        CLS_CACHE[book] = (rows||[]).map(function(r){
+          return { id:r.class_id, cls:r.name, day:r.day, start:r.start_time, end:r.end_time,
+                   teacher:String(r.teacher||''), loc:String(r.location||''),
+                   students:String(r.roster||'').trim().split(/\s+/).filter(Boolean) };
+        }).sort(function(a,b){
+          return (CLS_DAYS[a.day]-CLS_DAYS[b.day]) || (clsMins(a.start)-clsMins(b.start)) ||
+                 String(a.cls).localeCompare(String(b.cls),'ko');
+        });
+        if (CLS_BOOK !== book) return;   // 그 사이 구분을 바꿨으면 버린다
+        CLS_ROWS = CLS_CACHE[book];
+        clsFillTeachers(); clsSyncTeacher();
+      })
+      .catch(function(){
+        document.getElementById('clsSel').innerHTML = '<option value="">반 목록을 불러오지 못했어요</option>';
+        clsStatus('<p class="muted">시간표 반 목록을 불러오지 못했어요 — 새로고침해 주세요. (아래에서 학생을 직접 고를 수는 있어요)</p>');
+      });
+  }
+  function clsFillTeachers(){
+    if (!CLS_ROWS.length) return;   // 아직 안 받아왔으면 그대로 (받으면 다시 채운다)
+    var sel = document.getElementById('clsTeacher'), cur = sel.value;
+    var seen = {}, names = [];
+    CLS_ROWS.forEach(function(c){ if (c.teacher && !seen[c.teacher]){ seen[c.teacher]=1; names.push(c.teacher); } });
+    names.sort(function(a,b){ return a.localeCompare(b,'ko'); });
+    sel.innerHTML = '<option value="">담당 강사 전체</option>' +
+      names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'T 담당 반</option>'; }).join('');
+    // 맨 위에서 고른 강사 클리닉이 기본값 — 그 강사 반이 있을 때만
+    var want = (cur && seen[cur]) ? cur : (seen[masterTeacher()] ? masterTeacher() : '');
+    sel.value = want;
+  }
+  function clsFillSelect(){
+    if (!CLS_ROWS.length) return;
+    var t = document.getElementById('clsTeacher').value;
+    var sel = document.getElementById('clsSel'), cur = sel.value;
+    var list = CLS_ROWS.filter(function(c){ return !t || c.teacher === t; });
+    if (!list.length){
+      sel.innerHTML = '<option value="">'+(CLS_ROWS.length ? '이 강사의 반이 없어요' : '반이 없어요')+'</option>';
+      return;
+    }
+    var byDay = {};
+    list.forEach(function(c){ (byDay[c.day] = byDay[c.day] || []).push(c); });
+    sel.innerHTML = '<option value="">반을 고르세요 ('+list.length+'개)</option>' +
+      Object.keys(byDay).sort(function(a,b){ return CLS_DAYS[a]-CLS_DAYS[b]; }).map(function(d){
+        return '<optgroup label="'+esc(d)+'요일">' + byDay[d].map(function(c){
+          return '<option value="'+esc(c.id)+'">'+esc(c.day)+' '+esc(c.start)+' · '+esc(c.cls)+
+                 (c.teacher ? ' · '+esc(c.teacher)+'T' : '')+' ('+c.students.length+'명)</option>';
+        }).join('') + '</optgroup>';
+      }).join('');
+    if (cur && list.some(function(c){ return c.id === cur; })) sel.value = cur;
+    else if (cur){ CLS_CUR = null; clsStatus(''); }
+  }
+  /* 재원 명단에서 시간표 이름 찾기 — 괄호를 떼고 정확히, 안 되면 끝의 A만 떼고 한 번 더.
+   * 같은 이름이 여럿이면 앞 괄호의 학교 구분('(화정)심지후')으로 좁힌다. */
+  function clsFind(tok){
+    var raw = String(tok||'');
+    var plain = raw.replace(/^\s*\([^)]*\)\s*/,'').replace(/\(.*\)$/,'').trim();
+    var hint = (raw.match(/^\s*\(([^)]*)\)/) || [])[1] || '';
+    var hits = ROSTER.filter(function(s){ return s.name === plain; });
+    if (!hits.length && /A$/.test(plain)) hits = ROSTER.filter(function(s){ return s.name === plain.slice(0,-1); });
+    if (hits.length > 1 && hint){
+      var narrow = hits.filter(function(s){ return looseSchool(hint, s.school); });
+      if (narrow.length) hits = narrow;
+    }
+    return { plain: plain, hit: (hits.length === 1 ? hits[0] : null), dup: hits.length > 1 };
+  }
+  function clsKey(s){ return s.name + '|' + (s.school||'') + '|' + (s.grade||''); }
+  function clsPick(cid){
+    CLS_CUR = null; CLS_CHK = {};
+    for (var i=0;i<CLS_ROWS.length;i++) if (CLS_ROWS[i].id === cid) CLS_CUR = CLS_ROWS[i];
+    if (!CLS_CUR){ clsStatus(''); return; }
+    if (!ROSTER.length){ clsStatus('<p class="muted">재원 명단을 불러오는 중이에요 — 잠시 뒤 다시 골라 주세요.</p>'); return; }
+    CLS_CUR.students.forEach(function(nm){
+      var f = clsFind(nm);
+      if (f.hit){ CLS_CHK[clsKey(f.hit)] = true; CLS_BYKEY[clsKey(f.hit)] = f.hit; }
+    });
+    clsRenderStus();
+  }
+  function clsRenderStus(){
+    var c = CLS_CUR;
+    if (!c){ clsStatus(''); return; }
+    if (!c.students.length){ clsStatus('<p class="muted">'+esc(c.cls)+' 반에 학생이 없어요.</p>'); return; }
+    var rows = c.students.map(function(nm){ return { tok: nm, f: clsFind(nm) }; });
+    var okN = rows.filter(function(r){ return r.f.hit; }).length;
+    var missN = rows.length - okN;
+    var chkN = Object.keys(CLS_CHK).length;
+    var html = '<div class="cls-bar"><span><b>'+esc(c.cls)+'</b> · '+esc(c.day)+' '+esc(c.start)+'~'+esc(c.end)+
+               (c.teacher ? ' · '+esc(c.teacher)+'T' : '')+' — 선택 <b>'+chkN+'</b>/'+okN+'명</span>'+
+               '<span class="sp"><button type="button" id="clsAll">모두 선택</button>'+
+               '<button type="button" id="clsNone">모두 해제</button></span></div>'+
+               '<div class="cls-grid">'+ rows.map(function(r){
+                 if (!r.f.hit){
+                   return '<div class="cls-item miss" title="재원 명단에서 찾지 못했어요">'+
+                          '<span>'+esc(r.f.plain || r.tok)+'</span><span class="m">'+
+                          (r.f.dup ? '동명이인 — 아래에서 직접' : '명단에 없음')+'</span></div>';
+                 }
+                 var st = r.f.hit, k = clsKey(st), on = !!CLS_CHK[k];
+                 return '<div class="cls-item'+(on?' on':'')+'" data-key="'+esc(k)+'" role="checkbox" tabindex="0"'+
+                        ' aria-checked="'+(on?'true':'false')+'">'+
+                        '<span class="ck">'+(on?'✓':'')+'</span>'+
+                        '<span>'+esc(st.name)+'</span>'+
+                        '<span class="m">'+esc([st.school, st.grade].filter(Boolean).join(' '))+'</span></div>';
+               }).join('') +'</div>'+
+               (missN ? '<p class="muted" style="margin:8px 0 0;font-size:12.5px;">'+missN+
+                        '명은 재원 명단에서 찾지 못했어요(아직 등록 전이거나 동명이인) — 아래 목록에서 직접 골라 주세요.</p>' : '')+
+               '<button type="button" class="cls-apply" id="clsApply"'+(chkN?'':' disabled')+'>'+
+               '이 학생 '+chkN+'명을 대상으로 담기</button>';
+    clsStatus(html);
+  }
+  /* 맨 위에서 고른 강사 클리닉을 반 목록 필터에도 맞춘다 (그 강사 반이 있을 때만) */
+  function clsSyncTeacher(){
+    var sel = document.getElementById('clsTeacher');
+    if (!sel || !CLS_ROWS.length) return;
+    var m = masterTeacher();
+    var has = CLS_ROWS.some(function(c){ return c.teacher === m; });
+    var want = has ? m : '';
+    if (sel.value !== want){ sel.value = want; clsClearPick(); }
+    clsFillSelect();
+  }
+  /* 고른 반을 비운다 (배정을 마친 뒤) */
+  function clsClearPick(){
+    CLS_CUR = null; CLS_CHK = {};
+    var sel = document.getElementById('clsSel');
+    if (sel) sel.value = '';
+    clsStatus('');
+  }
+  /* 목록은 다시 그려지므로 클릭은 상자 한 곳에서 받는다 (clsInit에서 한 번만 붙인다) */
+  function clsBoxClick(e){
+    if (e.target.closest('#clsAll')){
+      (CLS_CUR ? CLS_CUR.students : []).forEach(function(nm){
+        var f = clsFind(nm); if (f.hit){ CLS_CHK[clsKey(f.hit)] = true; CLS_BYKEY[clsKey(f.hit)] = f.hit; }
+      });
+      clsRenderStus(); return;
+    }
+    if (e.target.closest('#clsNone')){ CLS_CHK = {}; clsRenderStus(); return; }
+    if (e.target.closest('#clsApply')){ clsApply(); return; }
+    var it = e.target.closest('.cls-item[data-key]'); if (!it) return;
+    var k = it.getAttribute('data-key');
+    if (CLS_CHK[k]) delete CLS_CHK[k]; else CLS_CHK[k] = true;
+    clsRenderStus();
+  }
+  /* 저장용 대상 토큰 — 이름이 유일하면 이름만, 동명이인이면 '이름|학교|학년' (위젯과 같은 규칙) */
+  function clsToken(st){
+    var dup = ROSTER.filter(function(s){ return s.name === st.name; }).length > 1;
+    return dup ? [st.name, String(st.school||'').replace(/\s+/g,''), String(st.grade||'').replace(/\s+/g,'')].join('|')
+               : st.name;
+  }
+  /* 고른 학생을 아래 위젯의 '일부' 선택으로 옮긴다.
+   * 위젯이 옛 버전(selectByKeys 없음)이면 이 화면에서 선택을 직접 만들어 배정까지 되게 한다. */
+  function clsApply(){
+    var keys = Object.keys(CLS_CHK);
+    if (!keys.length) return;
+    var nm = CLS_CUR ? CLS_CUR.cls : '';
+    var when = CLS_CUR ? (CLS_CUR.day + CLS_CUR.start) : '';
+    var n = keys.length;
+    if (picker && picker.selectByKeys){
+      n = picker.selectByKeys(keys).matched;
+      setAssignStatus('✓ ' + nm + ' 반 ' + n + '명을 대상으로 담았어요. 아래 목록에서 더하거나 뺀 뒤 [이 학생들에게 클리닉 배정]을 눌러 주세요.', 'ok');
+    } else {
+      var sts = keys.map(function(k){ return CLS_BYKEY[k]; }).filter(Boolean);
+      currentSel = { type:'일부', target: sts.map(clsToken).join(', '), count: sts.length,
+                     summary:'일부 — ' + sts.length + '명 (' + nm + ')' };
+      n = sts.length;
+      setAssignStatus('✓ ' + nm + ' 반 ' + n + '명을 대상으로 담았어요. [이 학생들에게 클리닉 배정]을 눌러 주세요.', 'ok');
+    }
+    var memo = document.getElementById('memo');
+    if (memo && !memo.value.trim()) memo.value = nm + (when ? ' (' + when + ')' : '');   // 배정 내역에서 어느 반인지 보이게
+    var el = document.getElementById('picker');
+    if (el && el.scrollIntoView) el.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  }
 
   /* ===== 배정 ===== */
   function setAssignStatus(m,k){ var s=document.getElementById('assignStatus'); s.textContent=m||''; s.className='status'+(k?(' '+k):''); }
@@ -520,6 +798,7 @@
       if(res.result==='success'){
         setAssignStatus('✓ 배정됨 — 신청 대상 설정 중…', 'ok');
         if(picker) picker.reset();
+        clsClearPick();          // '반으로 고르기'도 처음 상태로 (다음 반을 고르기 좋게)
         document.getElementById('memo').value='';
         loadAssignList();
         // 같은 선택을 이 강사 클리닉의 '신청 대상'으로 저장 → 이 학생들만 신청 가능 + 개인 페이지 카드 표시
@@ -732,6 +1011,10 @@
     return '<span class="'+cls+'">'+(r.ambiguous?'⚠️ ':'')+esc(a.name)+
       ' <span class="sc">'+esc(meta)+(r.slot?(' · '+esc(r.slot)):'')+'</span></span>';
   }
+
+  /* 시작 — 이 스크립트의 var가 모두 채워진 뒤라야 한다 */
+  unlock();
+  clsInit();
 </script>
 </body>
 </html>

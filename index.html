@@ -180,6 +180,12 @@
 
   .err-msg{color:var(--error);font-size:.82rem;margin-top:5px;display:none;font-weight:600;}
   .field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--error);}
+  .ph-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .ph-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line, #D7E3DD);background:#FBFCFB;border-radius:11px;padding:9px 13px;font-size:.9rem;cursor:pointer;}
+  .ph-btn svg{width:16px;height:16px;}
+  .ph-prev{position:relative;display:none;}
+  .ph-prev img{display:block;max-width:100%;max-height:220px;border-radius:12px;}
+  .ph-prev .ph-x{position:absolute;top:6px;right:6px;border:0;background:rgba(42,51,47,.72);color:#fff;border-radius:999px;width:26px;height:26px;font-size:.8rem;cursor:pointer;}
   .field.invalid .err-msg{display:block;}
 
   .form-note{text-align:center;color:var(--ink-soft);font-size:.8rem;margin-top:14px;}
@@ -319,9 +325,19 @@
     <!-- 마무리 -->
     <div class="section">
       <p class="eyebrow"><span class="dot"></span>마무리</p>
-      <div class="field" style="margin-bottom:0;">
+      <div class="field">
         <label for="memo">수경쌤에게 더 하고 싶은 말 <span style="font-weight:400;color:var(--ink-soft);">(선택)</span></label>
         <textarea id="memo" placeholder="편하게 적어주세요 :-)"></textarea>
+      </div>
+      <!-- 문제 사진 (2026-09-06) — 질문 대기열에 함께 실린다(신청 시트에는 안 들어감). 페이지가 1280px JPEG로 줄여 보낸다. -->
+      <div class="field" style="margin-bottom:0;">
+        <label>문제 사진 <span style="font-weight:400;color:var(--ink-soft);">(선택)</span></label>
+        <div class="ph-row">
+          <label class="ph-btn" for="photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>사진 찍기 · 고르기</label>
+          <input type="file" id="photo" accept="image/*" style="display:none" />
+          <div class="ph-prev" id="photoPrev"><img id="photoImg" alt="첨부한 문제 사진" /><button type="button" class="ph-x" id="photoClear" aria-label="사진 지우기">×</button></div>
+        </div>
+        <p class="hint" style="margin-top:6px;">붙이면 클리닉 날 선생님 질문 목록에서 사진을 바로 볼 수 있어요.</p>
       </div>
     </div>
 
@@ -429,6 +445,30 @@
     "함께 읽을 지문": "예) 김소월 진달래꽃 / 비교 작품으로 읽고 싶어요",
     "개념 설명": "예) 음운 변동 중 비음화가 헷갈려요"
   };
+
+  /* 문제 사진 — 긴 변 1280px·JPEG 로 줄여 data URL 로 보관 (리포트 s.html qqShrink 와 같은 규칙) */
+  let PHOTO = "";
+  function shrinkPhoto(file){
+    return new Promise(function(res, rej){
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = function(){
+        URL.revokeObjectURL(url);
+        const w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, 1280/Math.max(w,h,1));
+        function draw(scale, q){ const c = document.createElement("canvas"); c.width = Math.max(1,Math.round(w*scale)); c.height = Math.max(1,Math.round(h*scale)); c.getContext("2d").drawImage(img,0,0,c.width,c.height); return c.toDataURL("image/jpeg", q); }
+        let out = draw(s, .8); if(out.length > 900000) out = draw(s, .6); if(out.length > 900000) out = draw(s*.7, .6);
+        res(out);
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error("img")); };
+      img.src = url;
+    });
+  }
+  document.getElementById("photo").addEventListener("change", function(){
+    const f = this.files && this.files[0]; if(!f) return;
+    shrinkPhoto(f).then(function(d){ PHOTO = d; document.getElementById("photoImg").src = d; document.getElementById("photoPrev").style.display = "block"; })
+      .catch(function(){ alert("사진을 읽지 못했어요. 다른 사진으로 해 보세요."); });
+    this.value = "";
+  });
+  document.getElementById("photoClear").addEventListener("click", function(){ PHOTO = ""; document.getElementById("photoPrev").style.display = "none"; document.getElementById("photoImg").removeAttribute("src"); });
 
   const requestsEl = document.getElementById("requests");
   let cardSeq = 0;
@@ -783,7 +823,7 @@
       headers: { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json" },
       body: JSON.stringify({ p: { name: payload.name, school: payload.school, phone: String(payload.phone || ""),
         time: payload.time, memo: payload.memo, grade: grade, studentId: String(studentId || ""),
-        teacher: teacher, token: String(STUDENT_KEY || ""), requests: payload.requests } })
+        teacher: teacher, token: String(STUDENT_KEY || ""), requests: payload.requests, photo: PHOTO } })   // 사진은 원본(수파베이스)에만 — 시트 사본·옛 경로에는 안 보냄
     })
       .then(function(r){ if (!r.ok) throw new Error("clinic_submit " + r.status); return r.json(); })
       .then(function(resp){ onSubmitResp(resp, true); },

@@ -546,13 +546,14 @@
   /* 원본(클리닉 시트)이 도착했는가 / 미러로 먼저 그렸는가.
    * 시트 조회는 3.4~5.2초가 걸려서 그동안 화면이 비어 있었다(2026-08-26 실측).
    * 미러(clinic_requests)에 같은 내용이 있으므로 그걸로 먼저 그리고 원본은 뒤에서 받는다.
-   * 완료(클리어) 처리는 시트의 행 번호(_row)가 있어야 하므로 원본이 오기 전엔 버튼을 감춘다. */
+   * 완료(클리어) 처리는 원본 행 id(_id)로 바로 하므로 미러로 그린 순간부터 버튼이 보인다(2026-09-11 —
+   * 옛날엔 시트 행 번호(_row)가 있어야 해서 시트 사본에 없는 신청은 버튼이 영영 잠겼다). */
   let SHEET_READY = false, FAST_DRAWN = false;
 
   /* 미러로 먼저 그리기 — 원본이 오면 그쪽이 이깁니다(SHEET_READY). 실패해도 무해. */
   function sbLoadFast(){
     const H = { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY };
-    const q = "/clinic_requests?select=ts,name,school,phone,slot,rtype,area,content,qcount,memo,grade,student_id,teacher,token,clear&order=id.asc&limit=5000";
+    const q = "/clinic_requests?select=id,ts,name,school,phone,slot,rtype,area,content,qcount,memo,grade,student_id,teacher,token,clear&order=id.asc&limit=5000";
     Promise.all([
       fetch(SB_REST + q, { headers: H, cache: "no-store" })
         .then(r => r.ok ? r.json() : Promise.reject(new Error("sb " + r.status))),
@@ -568,8 +569,9 @@
         "제출시각": r.ts, "이름": r.name, "학교": r.school, "전화뒤4": r.phone,
         "클리닉시간": r.slot, "유형": r.rtype, "영역": r.area, "구체내용": r.content,
         "질문개수": r.qcount, "메모": r.memo, "학년": r.grade, "학생ID": r.student_id,
-        "담당강사": r.teacher, "토큰": r.token, "클리어": r.clear
-        // _row(시트 행 번호)는 원본이 와야 안다 — 그때까지 완료 버튼은 안 보인다
+        "담당강사": r.teacher, "토큰": r.token, "클리어": r.clear,
+        _id: r.id   // 원본 행 id — 완료(클리어)는 이 id 로 원본에 바로 기록한다(2026-09-11)
+        // _row(시트 행 번호)는 원본이 와야 안다 — 시트 사본 갱신에만 쓴다
       })).filter(r => (r["이름"] || r["유형"] || r["영역"] || r["구체내용"]))
          .filter(r => !isExcluded(r));
       FAST_DRAWN = true;
@@ -616,8 +618,8 @@
         .filter(r => !isExcluded(r));
       if (FAST_DRAWN && allRows.length){
         /* 원본(수파베이스)으로 그린 화면을 유지한다 (2026-08-26 원본 전환) — 시트 사본은
-         * 완료(클리어) 버튼용 행번호(_row)만 제공. 짝은 제출시각·이름·시간대·유형·내용으로
-         * 잇는다(sbClinicClearPatch와 같은 기준). 사본에 없는 신청은 완료 버튼이 잠긴다. */
+         * 시트 사본 갱신용 행번호(_row)만 제공. 짝은 제출시각·이름·시간대·유형·내용으로
+         * 잇는다(sbClinicClearPatch와 같은 기준). 사본에 없는 신청도 완료 버튼은 그대로(원본 id로 기록). */
         const keyOf = r => sbNormTs(r["제출시각"]) + "|" + String(r["이름"]||"") + "|" +
                            String(r["클리닉시간"]||"") + "|" + String(r["유형"]||"") + "|" + String(r["구체내용"]||"");
         const by = {};
@@ -665,11 +667,43 @@
     s.src = DATA_URL + "?callback=" + cb + q + "&t=" + Date.now();
     document.body.appendChild(s);
   }
+  /* 완료 표시 문자열 — 옛 백엔드 setClear 의 mark 와 같은 형식(한국시간 yyyy-MM-dd HH:mm) */
+  function kstMark(){
+    const d = new Date(Date.now() + 9 * 3600000), p = n => String(n).padStart(2, "0");
+    return d.getUTCFullYear() + "-" + p(d.getUTCMonth()+1) + "-" + p(d.getUTCDate()) + " " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes());
+  }
+  /* 완료(클리어)를 원본(수파베이스)에 id 로 바로 기록한다 — 바뀐 행 수를 돌려준다 */
+  function sbClinicClearByIds(ids, mark){
+    return fetch(SB_REST + "/clinic_requests?id=in.(" + ids.map(Number).join(",") + ")", {
+      method: "PATCH",
+      headers: { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json", "Prefer": "return=representation" },
+      body: JSON.stringify({ clear: mark })
+    }).then(r => { if (!r.ok) throw new Error("clinic clear " + r.status); return r.json(); })
+      .then(arr => (Array.isArray(arr) ? arr.length : 0));
+  }
+  /* 완료/미완료 토글 — 원본(수파베이스)이 먼저(2026-09-11, 사용자 "완료 버튼을 수파베이스 원본에 바로 기록").
+   * 시트 사본은 행 번호가 있는 건만 뒤에서 setClear 로 맞춘다(결과 무시 — 사본에 없는 신청은 일일 점검이 보고).
+   * 원본 id 가 없는 줄(미러 조회 실패로 시트만으로 그린 화면)은 예전 경로(setClear → 원본 짝 맞추기) 그대로. */
   window.clearRows = function(btn){
     const rows = JSON.parse(btn.getAttribute("data-rows") || "[]");
+    const ids = JSON.parse(btn.getAttribute("data-ids") || "[]");
     const clear = btn.getAttribute("data-clear") === "1";
-    if (!rows.length) return;
+    if (!rows.length && !ids.length) return;
     btn.disabled = true;
+    if (ids.length){
+      const mark = clear ? kstMark() : "";
+      sbClinicClearByIds(ids, mark).then(n => {
+        if (!n) throw new Error("no rows");
+        allRows.filter(r => ids.includes(r._id)).forEach(r => { r["클리어"] = mark; });
+        if (rows.length) apiJsonp({ action:"setClear", pw: teacherPw, rows: JSON.stringify(rows), clear: clear ? "1" : "" }, function(){});   // 시트 사본은 뒤에서
+        render();
+      }).catch(e => {
+        btn.disabled = false;
+        console.warn("완료 처리 실패", e);
+        alert("완료 처리에 실패했어요. 인터넷 연결을 확인해 주세요.");
+      });
+      return;
+    }
     apiJsonp({ action:"setClear", pw: teacherPw, rows: JSON.stringify(rows), clear: clear ? "1" : "" }, function(resp){
       if (!resp || resp.result !== "success"){
         btn.disabled = false;
@@ -813,7 +847,7 @@
         <td class="area-cell">${esc(r["영역"])}</td>
         <td class="content">${esc(r["구체내용"])}</td>
         <td class="memo">${esc(r["메모"])}</td>
-        <td class="clr-cell">${!r._row?`<span class="clr-wait" title="시트 사본 확인 중 — 사본에 없는 신청은 완료 버튼이 잠겨요 (일일 점검이 보고)">…</span>`:`<button type="button" class="st-toggle${done?' done':''}" title="${done?esc(r["클리어"])+' 완료 — 누르면 미완료로':'누르면 완료 처리'}" data-rows="[${r._row}]" data-clear="${done?'':'1'}" onclick="clearRows(this)">${done?'완료':'미완료'}</button>`}</td>
+        <td class="clr-cell">${!(r._id||r._row)?`<span class="clr-wait" title="확인 중…">…</span>`:`<button type="button" class="st-toggle${done?' done':''}" title="${done?esc(r["클리어"])+' 완료 — 누르면 미완료로':'누르면 완료 처리'}" data-ids="[${r._id||''}]" data-rows="[${r._row||''}]" data-clear="${done?'':'1'}" onclick="clearRows(this)">${done?'완료':'미완료'}</button>`}</td>
       </tr>`;
     }).join("");
     $("list").innerHTML = `<div class="table-card"><div class="tbl-scroll"><table>
@@ -839,12 +873,13 @@
       }).join("");
       const doneAll = reqs.every(isDone);
       const rowIds = reqs.map(x=>x._row).filter(Boolean);
+      const ids = reqs.map(x=>x._id).filter(Boolean);
       return `<div class="stu${doneAll?' done':''}">
         <div class="stu-head"><span class="nm">${esc(r0["이름"])}</span>
           <span class="slot">${esc(r0["클리닉시간"])}</span>
           <span class="meta">${esc(r0["학교"])} · ${esc(r0["전화뒤4"])}</span>
           <span class="n">요청 ${reqs.length}건</span>
-          ${rowIds.length?`<button type="button" class="st-toggle${doneAll?' done':''}" title="${doneAll?'누르면 미완료로':'누르면 완료 처리'}" data-rows="[${rowIds.join(',')}]" data-clear="${doneAll?'':'1'}" onclick="clearRows(this)">${doneAll?'완료':'미완료'}</button>`:''}
+          ${(ids.length||rowIds.length)?`<button type="button" class="st-toggle${doneAll?' done':''}" title="${doneAll?'누르면 미완료로':'누르면 완료 처리'}" data-ids="[${ids.join(',')}]" data-rows="[${rowIds.join(',')}]" data-clear="${doneAll?'':'1'}" onclick="clearRows(this)">${doneAll?'완료':'미완료'}</button>`:''}
         </div>
         ${items}
         ${memo ? `<div class="stu-memo">메모: ${esc(memo)}</div>` : ""}

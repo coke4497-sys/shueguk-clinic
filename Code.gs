@@ -388,7 +388,8 @@ function handleSubmit_(data) {
         gk.d ? ((gk.lv || "고") + gk.d) : "",     // 학년 ('중2'/'고3' — 옛 숫자 형식은 고등)
         data.studentId ? "'" + data.studentId : "", // 학생ID(부모님 8자리)
         data.teacher || "",                       // 담당강사
-        String(data.token || "")                  // 토큰 — 학생 페이지 '내 클리닉 신청' 매칭 키
+        String(data.token || ""),                 // 토큰 — 학생 페이지 '내 클리닉 신청' 매칭 키
+        ""                                        // 클리어(완료 표시) — 신청 시점엔 항상 빈칸
       ];
     });
 

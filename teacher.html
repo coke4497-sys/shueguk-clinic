@@ -40,6 +40,9 @@
   .title .brand{font-family:"Gowun Batang",serif;font-weight:700;font-size:1.2rem;color:var(--accent-dark);}
   .title .brand .en{color:var(--accent-warm);font-weight:700;letter-spacing:.06em;font-size:.9em;}
   .title h1{font-size:1rem;font-weight:600;margin:6px 0 0;}
+  /* 상위 메뉴(허브 클리닉 메뉴)로 돌아가기 — clinic_assign.html의 .back과 같은 모양 (2026-09-30 사용자 요청) */
+  .back{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px;color:var(--ink-soft);text-decoration:none;font-size:14px;}
+  .back svg{width:16px;height:16px;} .back:hover{color:var(--accent);}
   .head-actions{display:flex;align-items:center;gap:12px;}
   .updated{font-size:.78rem;color:var(--ink-soft);}
   .refresh{border:1px solid var(--line-strong);background:#fff;color:var(--ink);
@@ -233,6 +236,10 @@
 
 <header id="topbar" style="display:none;">
   <div class="title">
+    <a class="back" href="https://coke4497-sys.github.io/shueguk-hub/clinic.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+      클리닉 메뉴로 가기
+    </a>
     <div class="brand">이수경국어 <span class="en">SHUEGUK</span></div>
     <h1>클리닉 수업 신청 현황</h1>
   </div>

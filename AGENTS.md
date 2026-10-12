@@ -10,6 +10,7 @@
 
 ## Code Review Rules
 
+- 교사 페이지는 `<head>` 맨 앞에 허브 로그인 게이트 `<script src="https://coke4497-sys.github.io/shueguk-hub/assets/teacher-gate.js"></script>`를 둡니다(2026-10-12). 새 교사 페이지에 빠졌거나, **학생 페이지·공개 안내문에 들어간** 변경은 지적하세요. 게이트가 window.fetch를 바꾸거나 github.io 밖(로컬)에서 켜지게 하는 변경도 지적하세요.
 - **배정 저장의 기본은 '기존 대상에 더하기'**(토큰 합집합)입니다. 강사의 신청 대상을 마지막 선택으로 통째 교체하는 변경은 지적하세요(2026-09-02에 57명이 지워진 사고).
 - 대상 판정은 **토큰마다 학년/이름을 가려서** 합니다('2026 고등 3학년, 천예원'처럼 섞임). 같은 판정이 **세 벌**(`Code.gs` `eligibleForTarget_`, 리포트 `s.html` `clinicEligible`, `clinic_assign.html` `expandAssigned`) 있으므로 한쪽만 고친 변경은 지적하세요. `tools/target-test.js`가 세 벌을 대조합니다.
 - 학년은 '중2'/'고3' 형태로 대조(`gradeKey_`), 옛 숫자('3')는 고등 호환. 숫자만 보고 중·고를 섞는 변경은 지적하세요.

@@ -313,10 +313,30 @@
 (function(){
   var SB_URL = 'https://bangdbhqpphqqdwcledg.supabase.co';
   var SB_KEY = 'sb_publishable_dE9d1KIbpgYaQkaS2MSrlg_-7SiRJuT';
-  var T_ID = 'teachers@shueguk.internal';
-  var T_PW = 'shg_FCePWvnawH44SV8kYB9BHRKi6aag';
   var tok = null, until = 0, pending = null;
   var raw = window.fetch.bind(window);
+  var PS_KEY = 'shueguk_teacher_session_v2';   // 허브 개인 로그인 (2026-11-22 공용 교사 계정 폐지 — 누가 했는지 남기려고)
+  var forceRefresh = false;
+  try { localStorage.removeItem('sb_teacher_tok_v1'); } catch(e){}   // 옛 공용 계정 신분증 지우기
+  function personalTok(){
+    var s = null;
+    try { s = JSON.parse(localStorage.getItem(PS_KEY) || 'null'); } catch(e){}
+    if (!s || !s.access_token) return Promise.reject(new Error('no personal login'));
+    var now = Math.floor(Date.now() / 1000), force = forceRefresh;
+    forceRefresh = false;
+    if (!s.refresh_token || (!force && Number(s.expires_at) > now + 90)) return Promise.resolve(s);
+    return raw(SB_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: s.refresh_token })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if (!d || !d.access_token) return s;
+      var n = { access_token: d.access_token, refresh_token: d.refresh_token || s.refresh_token,
+                expires_at: Number(d.expires_at || (now + Number(d.expires_in || 3600))), user: d.user || s.user || null };
+      try { localStorage.setItem(PS_KEY, JSON.stringify(n)); } catch(e){}
+      return n;
+    }, function(){ return s; });
+  }
   var TOK_LS = 'sb_teacher_tok_v1';   // 받아 둔 신분증은 브라우저에 남겨 다음 페이지에서 다시 받지 않는다(1시간짜리)
 
   function cachedTok(){
@@ -328,17 +348,10 @@
   }
   function auth(){
     if (tok && Date.now() < until) return Promise.resolve(tok);
-    if (cachedTok()) return Promise.resolve(tok);
     if (pending) return pending;
-    var req = raw(SB_URL + '/auth/v1/token?grant_type=password', {
-      method: 'POST',
-      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: T_ID, password: T_PW })
-    }).then(function(r){ return r.json(); }).then(function(d){
-      if (!d || !d.access_token) throw new Error('teacher auth');
-      tok = d.access_token;
-      until = Date.now() + Math.max(60, (d.expires_in || 3600) - 300) * 1000;   // 만료 5분 전에 다시 받는다
-      try { localStorage.setItem(TOK_LS, JSON.stringify({ t: tok, u: until })); } catch(e){}
+    var req = personalTok().then(function(s){
+      tok = s.access_token;
+      until = Math.min(Number(s.expires_at) * 1000 - 90000, Date.now() + 3600000);   // 만료 90초 전에 다시 본다
       return tok;
     });
     /* 로그인이 멈춰 있으면 이 아래 모든 조회가 함께 멈춘다 — 10초를 넘기면 실패로 보고
@@ -364,7 +377,7 @@
     return auth().then(function(t){
       return raw(url, withAuth(url, opts, t)).then(function(r){
         if (r.status !== 401) return r;
-        tok = null; until = 0;                       // 만료가 겹쳤으면 한 번만 다시 받아 재시도
+        tok = null; until = 0; forceRefresh = true;  // 만료가 겹쳤으면 한 번만 새로 받아 재시도
         try { localStorage.removeItem(TOK_LS); } catch(e){}
         return auth().then(function(t2){ return raw(url, withAuth(url, opts, t2)); });
       });

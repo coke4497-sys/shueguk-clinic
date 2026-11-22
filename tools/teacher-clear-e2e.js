@@ -90,6 +90,7 @@ function btnOf(page, name) { return page.locator('tr', { hasText: name }).locato
   await new Promise(r => srv.listen(PORT, r));
   const browser = await chromium.launch();
   const page = await browser.newPage();
+  await page.addInitScript(() => { try { localStorage.setItem('shueguk_teacher_session_v2', JSON.stringify({ access_token: 'T', refresh_token: 'R', expires_at: Math.floor(Date.now() / 1000) + 3600 })); } catch (e) {} });   // 허브 개인 로그인(2026-11-22 공용 교사 계정 폐지)
   page.on('pageerror', e => console.error('  [pageerror]', e.message));
   await route(page);
 
